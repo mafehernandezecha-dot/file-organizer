@@ -3,10 +3,12 @@
 A local-first, safety-first file organizer for macOS, built for the
 Memobrick business and personal files.
 
-> **Current phase: 1 — Audit (read-only).**
-> This version only *looks*. It contains no code that moves, renames, or
-> deletes files. It writes exactly two things: a local index and a report,
-> both inside `~/.file-organizer/` (readable only by your user account).
+> **Status: audit + first cleanup (order files).**
+> `audit`, `report`, and `orders` only *look*: they write an index, reports,
+> and previews inside `~/.file-organizer/` (readable only by your account).
+> The only command that changes files is `apply`, and only for a plan you
+> reviewed, after a Time Machine check and typing `TRASH`. It moves files to
+> the Trash (never permanent deletion), and `undo` puts them back.
 
 ## What the audit tells you
 
@@ -77,6 +79,36 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## Clearing out customer order files
+
+Order files are recognized by names that start with a 5–6 digit order number
+(`21074 Riley Sherman 16x16.pdf`, `#21100_proof.png`). Years like
+`2024 Taxes.pdf` never match. Three steps — nothing happens until step 2:
+
+1. **Preview** (changes nothing):
+   ```bash
+   python3 -m organizer audit           # refresh the index first
+   python3 -m organizer orders --open
+   ```
+   A page lists every file with a number (#), grouped by order.
+2. **Approve** — the command to copy is printed at the end of step 1:
+   ```bash
+   python3 -m organizer apply ~/.file-organizer/plans/trash-orders_….json
+   ```
+   Add `--skip 3,17,20-25` to keep specific numbers. It checks Time Machine,
+   asks you to type `TRASH`, and moves files to the **Trash** with Finder
+   (never permanent deletion). macOS will ask to let Terminal control Finder —
+   click **OK**. Files that changed since the scan are left alone.
+3. **Undo** if needed — the exact command is printed when step 2 finishes:
+   ```bash
+   python3 -m organizer undo ~/.file-organizer/journal/….jsonl
+   ```
+   Or use Finder's **Put Back** on any file in the Trash.
+
+Files on an iCloud-synced Desktop/Documents also leave your other devices;
+iCloud keeps them in "Recently Deleted" for 30 days. Emptying the Trash is
+always your own decision.
+
 ### Using it with Claude Code on your Mac
 
 Open Claude Code in the `file-organizer` folder and say something like:
@@ -110,6 +142,7 @@ folder structure."* Claude reads the report locally on your Mac.
 | `stale_days` | "Not touched recently" threshold | `365` |
 | `hash_duplicates` | Check exact duplicates | `true` |
 | `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
+| `order_file_pattern` | Regex for order-file names (first group = order number) | `^#?(\d{5,6})[ _\-]` |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |
 | `state_dir` | Where index + reports live | `~/.file-organizer` |
 
@@ -120,8 +153,8 @@ folder structure."* Claude reads the report locally on your Mac.
 | **1. Audit** ✅ | Index, duplicates, versions, storage report | No |
 | 2. Structure | Proposed master folder tree, adapted to what exists | No |
 | 3. Classification | Content-based recognition (PDF/Office text, EXIF, video metadata), confidence scores, review queue, similar-image detection | No |
-| 4. Preview | Exact list of proposed moves/renames, collisions flagged | No |
-| 5. Execute | Approved moves only, with backup check, journal, integrity verification, one-command undo | **Yes, with approval** |
+| 4. Preview | Exact list of proposed moves/renames, collisions flagged (order-file cleanup ✅) | No |
+| 5. Execute | Approved actions only, with backup check, journal, change detection, one-command undo (Trash ✅, moves next) | **Yes, with approval** |
 | 6. Search & dashboard | Natural-language search, previews, "Reveal in Finder", dashboard | No |
 | 7. Automation | Watch intake folders; Review Mode / Automatic Mode for high-confidence files only; weekly report | Only per approved rules |
 

@@ -81,6 +81,7 @@ class Config:
     # assets. When true, loose images count as business. Screenshots are a
     # separate kind and never count.
     loose_photos_are_business: bool = False
+    order_file_pattern: str = ""
     business_keywords: List[str] = field(
         default_factory=lambda: ["memobrick", "mosaic", "brick", "baseplate", "shopify"]
     )
@@ -111,6 +112,7 @@ def load_config(path: Path) -> Config:
     cfg.large_file_mb = int(data.get("large_file_mb", cfg.large_file_mb))
     cfg.hash_duplicates = bool(data.get("hash_duplicates", True))
     cfg.loose_photos_are_business = bool(data.get("loose_photos_are_business", False))
+    cfg.order_file_pattern = str(data.get("order_file_pattern", ""))
     if "business_keywords" in data:
         cfg.business_keywords = [k.lower() for k in data["business_keywords"]]
     return cfg
