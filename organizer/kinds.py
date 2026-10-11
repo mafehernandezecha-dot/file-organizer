@@ -33,15 +33,27 @@ KIND_BY_EXT = {
 _EXT_TO_KIND = {ext: kind for kind, exts in KIND_BY_EXT.items() for ext in exts}
 
 
+# Screen captures by name: macOS (English/Spanish/Hebrew), CleanShot, and
+# common tools. Kept apart from photos and videos.
+_SCREENSHOT_RE = re.compile(
+    r"^(screen ?shot|screenshot|captura de pantalla|צילום מסך|cleanshot|snagit|snip)", re.I
+)
+_SCREEN_RECORDING_RE = re.compile(
+    r"^(screen ?recording|grabación de pantalla|הקלטת מסך|cleanshot)", re.I
+)
+
+
 def kind_for(name: str) -> str:
-    return _EXT_TO_KIND.get(PurePath(name).suffix.lower(), "other")
-
-
-_SCREENSHOT_RE = re.compile(r"^(screen ?shot|screenshot|captura de pantalla|cleanshot)", re.I)
+    kind = _EXT_TO_KIND.get(PurePath(name).suffix.lower(), "other")
+    if kind == "image" and _SCREENSHOT_RE.match(name):
+        return "screenshot"
+    if kind == "video" and _SCREEN_RECORDING_RE.match(name):
+        return "screen_recording"
+    return kind
 
 
 def is_screenshot(name: str) -> bool:
-    return bool(_SCREENSHOT_RE.match(name))
+    return kind_for(name) == "screenshot"
 
 
 # Version / copy markers people add to filenames. Stripping them yields a

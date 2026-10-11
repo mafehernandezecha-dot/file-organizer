@@ -78,7 +78,8 @@ class Config:
     large_file_mb: int = 500
     hash_duplicates: bool = True
     # Personal photos live in Apple Photos; loose photo files are Memobrick
-    # assets. When true, loose images (not screenshots) count as business.
+    # assets. When true, loose images count as business. Screenshots are a
+    # separate kind and never count.
     loose_photos_are_business: bool = False
     business_keywords: List[str] = field(
         default_factory=lambda: ["memobrick", "mosaic", "brick", "baseplate", "shopify"]

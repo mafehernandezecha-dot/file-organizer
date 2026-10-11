@@ -90,6 +90,12 @@ folder structure."* Claude reads the report locally on your Mac.
   trips) stays in the Photos app.
 - **Loose photo files:** Memobrick assets only → destined for
   `01 MEMOBRICK BUSINESS / F. Creative Assets`.
+- **Screenshots:** their own category, never mixed with photos and never
+  counted as Memobrick assets. Screen recordings go with them, not with
+  videos. Destination: `Screenshots/` with a `Screen Recordings/` subfolder.
+  Recognized by macOS names in English, Spanish, and Hebrew (and CleanShot).
+  iPhone screenshots synced as `IMG_xxxx.PNG` can't be told apart by name;
+  Phase 3 will detect them from image size and missing camera data.
 - **Backup:** Time Machine. Before Phase 5 moves anything, the agent will check
   `tmutil latestbackup` and refuse to run if the latest backup is older than
   24 hours or the backup disk is unavailable. To check yourself: menu bar
@@ -103,7 +109,7 @@ folder structure."* Claude reads the report locally on your Mac.
 | `excluded_folders` | Folders inside those to skip | `[]` |
 | `stale_days` | "Not touched recently" threshold | `365` |
 | `hash_duplicates` | Check exact duplicates | `true` |
-| `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files (not screenshots) count as Memobrick assets | `false` (example config: `true`) |
+| `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |
 | `state_dir` | Where index + reports live | `~/.file-organizer` |
 

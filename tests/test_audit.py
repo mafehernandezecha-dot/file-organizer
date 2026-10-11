@@ -160,6 +160,29 @@ class LoosePhotosTest(unittest.TestCase):
                 self.assertEqual(got, expected)
 
 
+class ScreenshotTest(unittest.TestCase):
+    def test_screenshots_and_recordings_separate_from_photos_and_videos(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "Desktop"
+            write(d / "Screenshot 2026-10-01 at 10.00.00.png", b"a")
+            write(d / "Screen Recording 2026-10-01 at 10.05.00.mov", b"b")
+            write(d / "IMG_0001.jpg", b"c")
+            write(d / "reel.mp4", b"d")
+            cfg = Config(roots=[d], state_dir=Path(tmp) / "state", loose_photos_are_business=True)
+            conn = connect(cfg.db_path)
+            scan_id = scan(conn, cfg)
+            kinds = {r["name"]: (r["kind"], r["business"]) for r in conn.execute(
+                "SELECT name, kind, business FROM files WHERE scan_id=?", (scan_id,))}
+            self.assertEqual(kinds["Screenshot 2026-10-01 at 10.00.00.png"], ("screenshot", 0))
+            self.assertEqual(kinds["Screen Recording 2026-10-01 at 10.05.00.mov"],
+                             ("screen_recording", 0))
+            self.assertEqual(kinds["IMG_0001.jpg"], ("image", 1))
+            self.assertEqual(kinds["reel.mp4"][0], "video")
+            obs = " ".join(build_audit(conn, scan_id, cfg).observations)
+            self.assertIn("1 screenshot(s) and 1 screen recording(s)", obs)
+            self.assertIn("belong under Screenshots", obs)
+
+
 class KindsTest(unittest.TestCase):
     def test_base_name_groups_versions_not_years(self):
         self.assertEqual(base_name("Proposal_FINAL2.pdf"), base_name("Proposal v3 (1).pdf"))
@@ -171,6 +194,10 @@ class KindsTest(unittest.TestCase):
         self.assertEqual(kind_for("IMG_0001.HEIC"), "image")
         self.assertEqual(kind_for("reel.MOV"), "video")
         self.assertEqual(kind_for("mystery"), "other")
+        self.assertEqual(kind_for("Screen Shot 2020-01-01 at 9.00.00 AM.png"), "screenshot")
+        self.assertEqual(kind_for("Captura de pantalla 2026-01-01.png"), "screenshot")
+        self.assertEqual(kind_for("צילום מסך 2026-01-01.png"), "screenshot")
+        self.assertEqual(kind_for("Screen Recording 2026-01-01.mov"), "screen_recording")
 
 
 if __name__ == "__main__":

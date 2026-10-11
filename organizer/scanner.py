@@ -27,7 +27,7 @@ from organizer.config import (
     Config,
     is_sensitive_name,
 )
-from organizer.kinds import base_name, is_screenshot, kind_for
+from organizer.kinds import base_name, kind_for
 
 Progress = Optional[Callable[[int], None]]
 
@@ -137,7 +137,7 @@ def scan(conn: sqlite3.Connection, cfg: Config, progress: Progress = None) -> in
             kind = "project" if item_type == "project" else kind_for(name)
             business = any(k in rel for k in keywords) or (
                 cfg.loose_photos_are_business and item_type == "file"
-                and kind == "image" and not is_screenshot(name)
+                and kind == "image"
             )
             conn.execute(
                 """INSERT OR IGNORE INTO files

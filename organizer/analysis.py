@@ -11,7 +11,7 @@ from typing import Dict, List
 
 from organizer.config import Config
 from organizer.duplicates import duplicate_groups
-from organizer.kinds import has_version_marker, is_screenshot
+from organizer.kinds import has_version_marker
 
 DAY = 86400
 
@@ -110,7 +110,8 @@ def build_audit(conn: sqlite3.Connection, scan_id: int, cfg: Config) -> Audit:
 
     families: Dict[tuple, List[sqlite3.Row]] = defaultdict(list)
     for r in rows:
-        if r["item_type"] == "file" and r["kind"] not in ("code", "other"):
+        if r["item_type"] == "file" and r["kind"] not in (
+                "code", "other", "screenshot", "screen_recording"):
             families[(r["base_name"], r["kind"])].append(r)
     a.version_families = sorted(
         (sorted(g, key=lambda r: r["mtime"]) for g in families.values()
@@ -151,11 +152,19 @@ def _observations(rows: List[sqlite3.Row], a: Audit) -> List[str]:
     desktop = by_root_name.get("desktop", [])
     if desktop:
         loose = [r for r in desktop if os.path.dirname(r["path"]) == r["root"]]
-        shots = [r for r in desktop if is_screenshot(r["name"])]
         if len(loose) > 20:
             obs.append(f"The Desktop has {len(loose)} loose items at the top level.")
-        if shots:
-            obs.append(f"{len(shots)} screenshot(s) are on the Desktop.")
+
+    # Screenshots and screen recordings share one destination: Screenshots/
+    # (recordings in a "Screen Recordings" subfolder), apart from photos/videos.
+    caps = [r for r in rows if r["kind"] in ("screenshot", "screen_recording")]
+    if caps:
+        n_rec = sum(r["kind"] == "screen_recording" for r in caps)
+        where = Counter(short_root(r["root"]) for r in caps)
+        obs.append(f"{len(caps) - n_rec} screenshot(s) and {n_rec} screen recording(s) "
+                   f"({human(sum(r['size'] for r in caps))}) are mixed in with other files "
+                   f"and belong under Screenshots: "
+                   + ", ".join(f"{n} in {w}" for w, n in where.most_common()) + ".")
 
     media_homes = {"pictures", "movies"}
     stray_media = [r for r in rows if r["kind"] in ("image", "video")
@@ -181,6 +190,10 @@ def _observations(rows: List[sqlite3.Row], a: Audit) -> List[str]:
         obs.append(f"{a.dataless_count} file(s) are stored only in iCloud; they were indexed "
                    f"but not opened, so duplicate checks skip them.")
     return obs
+
+
+def short_root(root: str) -> str:
+    return os.path.basename(root) or root
 
 
 def human(n: float) -> str:
