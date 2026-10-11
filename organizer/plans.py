@@ -94,7 +94,7 @@ def save_plan(plan: Dict, plans_dir: Path, slug: str) -> Path:
 
 def load_plan(path: Path) -> Dict:
     plan = json.loads(Path(path).read_text(encoding="utf-8"))
-    if plan.get("version") != 1 or plan.get("action") not in ("trash", "move"):
+    if plan.get("version") != 1 or plan.get("action") not in ("trash", "move", "cleanup"):
         raise ValueError(f"not a plan file this version understands: {path}")
     return plan
 

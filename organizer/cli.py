@@ -27,6 +27,7 @@ from organizer.plans import (
     render_trash_preview, save_plan, write_preview,
 )
 from organizer import moves, trash
+from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_plan
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
 from organizer import vision as vision_mod
@@ -140,7 +141,7 @@ def _confirm_backup(ask) -> bool:
 def cmd_apply(args: argparse.Namespace, ask=input) -> int:
     cfg = load_config(args.config)
     plan = load_plan(args.plan)
-    is_trash = plan["action"] == "trash"
+    is_trash = plan["action"] in ("trash", "cleanup")
     if is_trash and not trash.is_macos():
         _say("Moving to the Trash only works on macOS.")
         return 2
@@ -156,7 +157,15 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
         _say("Stopped. Nothing was changed.")
         return 1
     kept = f", keeping {len(skip)} you skipped" if skip else ""
-    if is_trash:
+    if plan["action"] == "cleanup":
+        mp, tp = split_plan(plan)
+        n_move, _ = trash.summarize(mp, skip)
+        n_trash, t_size = trash.summarize(tp, skip)
+        _say(f"About to keep {n_move:,} newest version(s) together and move {n_trash:,} "
+             f"file(s) ({human(t_size)}) to the Trash{kept}.")
+        _say("macOS may ask to let Terminal control Finder — click OK.")
+        word = "TRASH"
+    elif is_trash:
         _say(f"About to move {count:,} file(s) ({human(size)}) to the Trash{kept}.")
         _say("macOS may ask to let Terminal control Finder — click OK.")
         word = "TRASH"
@@ -169,7 +178,13 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
     journal = cfg.state_dir / "journal" / f"{Path(args.plan).stem}_{stamp}.jsonl"
-    if is_trash:
+    if plan["action"] == "cleanup":
+        mp, tp = split_plan(plan)
+        mc = moves.apply_moves(mp, journal, skip, say=_say)
+        tc = trash.apply_trash(tp, journal, skip, say=_say)
+        counts = {"skipped": mc["skipped"] + tc["skipped"], "failed": mc["failed"] + tc["failed"]}
+        done = f"Kept together: {mc['moved']:,} · moved to Trash: {tc['trashed']:,}"
+    elif is_trash:
         counts = trash.apply_trash(plan, journal, skip, say=_say)
         done = f"Moved to Trash: {counts['trashed']:,}"
     else:
@@ -183,17 +198,21 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
 
 
 def cmd_undo(args: argparse.Namespace) -> int:
-    kind = moves.journal_kind(args.journal)
-    if kind == "move":
-        counts = moves.undo_moves(args.journal, say=_say)
-    elif kind == "trash":
-        if not trash.is_macos():
-            _say("Restoring from the Trash only works on macOS.")
-            return 2
-        counts = trash.undo_trash(args.journal, say=_say)
-    else:
+    statuses = {e["status"] for e in trash.read_journal(args.journal)}
+    if not statuses & {"moved", "trashed"}:
         _say("That run didn't change anything, so there is nothing to undo.")
         return 0
+    if "trashed" in statuses and not trash.is_macos():
+        _say("Restoring from the Trash only works on macOS.")
+        return 2
+    counts = {"restored": 0, "failed": 0}
+    kind = "trash" if "trashed" in statuses else "move"
+    if "trashed" in statuses:
+        for k, v in trash.undo_trash(args.journal, say=_say).items():
+            counts[k] += v
+    if "moved" in statuses:
+        for k, v in moves.undo_moves(args.journal, say=_say).items():
+            counts[k] += v
     _say(f"Restored: {counts['restored']:,} · could not restore: {counts['failed']:,}")
     if counts["failed"] and kind == "trash":
         _say("Anything not restored is still in the Trash — use Finder's “Put Back”.")
@@ -287,6 +306,33 @@ def cmd_duplicates(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_cleanup(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    conn = connect(cfg.db_path)
+    scan_id = latest_scan_id(conn)
+    scan_row = conn.execute("SELECT finished_at FROM scans WHERE id=?", (scan_id,)).fetchone()
+    scanned = {str(r) for r in cfg.roots}
+    cfg.intake_folders = [p for p in cfg.intake_folders if str(p) in scanned]
+    plan = build_cleanup_plan(conn, scan_id, cfg, scan_row["finished_at"], keep=args.keep)
+    if not plan["items"]:
+        _say("Nothing to clean up: no installers or archives to trash, and theme/editor "
+             "versions are already in place.")
+        return 0
+    plan_path = save_plan(plan, cfg.state_dir / "plans", "cleanup-installers-archives")
+    preview = write_preview(render_cleanup_preview(plan, plan_path), cfg.reports_dir, plan_path)
+    mp, tp = split_plan(plan)
+    _say(f"Keep newest {args.keep} per theme/editor family: "
+         f"{len(mp['items']) + len(plan['kept_in_place']):,} file(s). "
+         f"To Trash: {len(tp['items']):,} file(s), {human(sum(i['size'] for i in tp['items']))}.")
+    _say("Nothing has been moved. Review the preview:")
+    _say(f"  {preview}")
+    _say("When it looks right, approve with:")
+    _say(f"  python3 -m organizer apply {plan_path}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(preview)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -329,6 +375,12 @@ def build_parser() -> argparse.ArgumentParser:
     du.add_argument("--config", type=Path, default=Path("config.json"))
     du.add_argument("--open", action="store_true")
     du.set_defaults(func=cmd_duplicates)
+
+    cl = sub.add_parser("cleanup", help="Preview trashing installers/archives (keeps newest theme versions)")
+    cl.add_argument("--config", type=Path, default=Path("config.json"))
+    cl.add_argument("--keep", type=int, default=5, help="newest versions to keep per family")
+    cl.add_argument("--open", action="store_true")
+    cl.set_defaults(func=cmd_cleanup)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)

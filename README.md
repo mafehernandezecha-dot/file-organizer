@@ -112,6 +112,21 @@ Command Line Tools; results are cached. Use `--no-vision` to skip it.
 Top-level folders in Downloads (an unzipped editor build, a photo shoot)
 move as one piece, so nothing inside them is scattered.
 
+## Installers & archives (keeping the newest theme versions)
+
+```bash
+python3 -m organizer audit
+python3 -m organizer cleanup --open          # preview; --keep 5 is the default
+python3 -m organizer apply ~/.file-organizer/plans/cleanup-installers-archives_….json   # type TRASH
+```
+
+Shopify theme archives and Memobrick editor/studio build archives are
+grouped into families; the newest 5 (by modified date) of each are kept
+together in `C Website & Technology/Shopify Themes` and `…/Editor & Studio
+Builds`, older versions go to the Trash. Every other installer (.dmg, .pkg)
+and archive (.zip, …) in Downloads/Desktop goes to the Trash. App bundles
+and anything outside Downloads/Desktop are left alone.
+
 ## Trashing extra copies of duplicates
 
 ```bash
