@@ -27,7 +27,7 @@ from organizer.plans import (
     parse_skip, render_move_preview, screenshot_move_pairs,
     render_trash_preview, save_plan, write_preview,
 )
-from organizer import moves, schedule, tags, trash, weekly
+from organizer import moves, schedule, structure, tags, trash, weekly
 from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_plan
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
@@ -228,6 +228,10 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
 def cmd_undo(args: argparse.Namespace) -> int:
     entries = trash.read_journal(args.journal)
     statuses = {e["status"] for e in entries}
+    if "created_dir" in statuses:
+        c = structure.undo_create(entries, say=_say)
+        _say(f"Removed {c['restored']:,} empty folder(s) this run created.")
+        return 0 if not c["failed"] else 1
     if "tagged" in statuses:
         xa = tags.backend()
         if xa is not None:
@@ -520,6 +524,30 @@ def cmd_videos(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_folders(args: argparse.Namespace, ask=input) -> int:
+    cfg = load_config(args.config)
+    if not cfg.business_root.parent.is_dir():
+        _say(f"Folder not found: {cfg.business_root.parent}")
+        return 1
+    missing = structure.missing_folders(cfg)
+    if not missing:
+        _say("All folders from the plan already exist.")
+        return 0
+    _say(f"{len(missing):,} folder(s) from your plan don't exist yet, e.g.:")
+    for p in missing[:8]:
+        _say(f"  {short(str(p))}")
+    _say("Only empty folders are created; nothing existing is touched.")
+    if ask("Type CREATE to continue: ").strip().upper() != "CREATE":
+        _say("Stopped. Nothing was changed.")
+        return 1
+    journal = cfg.state_dir / "journal" / f"folders_{time.strftime('%Y-%m-%d_%H%M%S')}.jsonl"
+    made = structure.create(missing, journal)
+    _say(f"Created {made:,} folder(s).")
+    _say("To remove them again (only while still empty):")
+    _say(f"  python3 -m organizer undo {journal}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -587,6 +615,10 @@ def build_parser() -> argparse.ArgumentParser:
     sch.add_argument("--day", default="monday")
     sch.add_argument("--time", default="09:00")
     sch.set_defaults(func=cmd_schedule)
+
+    fo = sub.add_parser("folders", help="Create the full folder structure (empty folders)")
+    fo.add_argument("--config", type=Path, default=Path("config.json"))
+    fo.set_defaults(func=cmd_folders)
 
     vd = sub.add_parser("videos", help="Preview gathering all Memobrick videos into one folder")
     vd.add_argument("--config", type=Path, default=Path("config.json"))

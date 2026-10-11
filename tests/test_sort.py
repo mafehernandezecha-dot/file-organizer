@@ -61,7 +61,12 @@ class ClassifyTest(unittest.TestCase):
             "DALL·E 2026-01-02 mosaic.png": "F Creative Assets/AI-Generated",
             "holiday reel v2.mp4": "E Social Media/Posts & Videos",
             "Black Friday ad 1080x1080.png": "F Creative Assets/Ad Creatives",
-            "Christmas campaign plan.docx": "D Marketing/Campaigns",
+            "Christmas campaign plan.docx": "D Marketing/Holiday Campaigns",
+            "Facebook ads report Oct.xlsx": "D Marketing/Facebook Ads",
+            "Klaviyo flow ideas.docx": "D Marketing/Email Marketing",
+            "Google Ads keywords.csv": "D Marketing/Google Ads",
+            "spring campaign brief.pdf": "D Marketing/Campaigns",
+            "facebook ad 1080.png": "F Creative Assets/Ad Creatives",
             "Untitled design (4).png": "F Creative Assets/Designs (Canva)",
             "IMG_1234.HEIC": "F Creative Assets/Photos/2026",
         }

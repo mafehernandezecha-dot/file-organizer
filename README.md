@@ -80,6 +80,22 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## The full folder structure
+
+```bash
+python3 -m organizer folders      # creates every folder from the plan (type CREATE)
+```
+
+Creates all sections and subfolders of `01 MEMOBRICK BUSINESS` (A–J, e.g.
+D Marketing → Facebook Ads, Instagram Ads, TikTok Ads, Google Ads, Email
+Marketing, Campaigns, Holiday Campaigns, Discount Promotions, Strategy &
+Reports), `02 PERSONAL DOCUMENTS` and `05 INTAKE`, even if they start empty.
+Only empty folders are created; `undo` removes them again while still empty.
+
+Where marketing material goes: ad **images** → F Creative Assets/Ad Creatives,
+ad **videos** → F Creative Assets/Videos, marketing **documents** → the
+matching D Marketing subfolder.
+
 ## All Memobrick videos in one folder
 
 Every Memobrick video goes to `01 MEMOBRICK BUSINESS/F Creative Assets/Videos`

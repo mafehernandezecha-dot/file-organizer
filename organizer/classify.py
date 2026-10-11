@@ -127,6 +127,21 @@ AI_TOOLS = (r"dall[·\-\s_]?e", "dalle", "midjourney", r"chatgpt[\s_\-]*image",
             "kling", "sora", "flux", r"stable[\s_\-]*diffusion", "magnific")
 
 
+# Marketing documents (plans, reports, copy) by channel or type. Ad images and
+# videos stay in Creative Assets, as in the organization plan.
+MARKETING_DOCS = [
+    ("Email Marketing", (r"email[\s_\-]*(campaign|marketing|flow|sequence)", "newsletter",
+                         "klaviyo", "omnisend", "mailchimp")),
+    ("Facebook Ads", (r"(facebook|fb|meta)[\s_\-]*ads?",)),
+    ("Instagram Ads", (r"(instagram|ig)[\s_\-]*ads?",)),
+    ("TikTok Ads", (r"tik[\s_\-]*tok[\s_\-]*ads?",)),
+    ("Google Ads", (r"google[\s_\-]*ads?", "adwords", r"google[\s_\-]*shopping")),
+    ("Holiday Campaigns", ("christmas", "navidad", r"black[\s_\-]*friday", r"cyber[\s_\-]*monday",
+                           "holiday", r"mother'?s[\s_\-]*day", r"valentine'?s?", "hanukkah")),
+    ("Discount Promotions", ("discount", "coupon", r"promo[\s_\-]*code", r"early[\s_\-]*bird")),
+]
+
+
 def classify_file(row, text: str, loose_photos_are_business: bool) -> Decision:
     """row: an index row (name, kind, ext, mtime, business)."""
     name = row["name"]
@@ -194,6 +209,10 @@ def classify_file(row, text: str, loose_photos_are_business: bool) -> Decision:
                  "youtube", "shorts", "captions?", r"content[\s_\-]*calendar"):
         sub = "Content Calendar & Captions" if kind in ("document", "spreadsheet", "pdf") else "Posts & Videos"
         return Decision(f"{E}/{sub}", 0.8, f"'{w}' in the name")
+    if not is_media:
+        for sub, pats in MARKETING_DOCS:
+            if w := _has(n, *pats):
+                return Decision(f"{D}/{sub}", 0.8, f"'{w}' in the name")
     if w := _has(n, "ads?", "creative", "creatives", "campaign", "promo", "discount", "sale",
                  r"black[\s_\-]*friday", "christmas", "holiday", "navidad", r"mother'?s[\s_\-]*day",
                  r"valentine'?s?", r"early[\s_\-]*bird"):
