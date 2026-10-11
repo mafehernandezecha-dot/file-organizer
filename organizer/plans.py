@@ -94,7 +94,7 @@ def save_plan(plan: Dict, plans_dir: Path, slug: str) -> Path:
 
 def load_plan(path: Path) -> Dict:
     plan = json.loads(Path(path).read_text(encoding="utf-8"))
-    if plan.get("version") != 1 or plan.get("action") not in ("trash",):
+    if plan.get("version") != 1 or plan.get("action") not in ("trash", "move"):
         raise ValueError(f"not a plan file this version understands: {path}")
     return plan
 
@@ -159,6 +159,110 @@ def render_trash_preview(
         + (f"<th>{e(group_label)}</th>" if show_group else "") +
         "<th>File</th><th>Folder</th><th>Size</th><th>Modified</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table></div></main></body></html>"
+    )
+
+
+RECORDINGS_SUBFOLDER = "Screen Recordings"
+
+
+def in_folder_named(path: str, folder_name: str) -> bool:
+    return folder_name in Path(path).parts[:-1]
+
+
+def find_screen_captures(conn: sqlite3.Connection, scan_id: int, dest_root: Path) -> List[sqlite3.Row]:
+    rows = conn.execute(
+        """SELECT * FROM files WHERE scan_id=? AND item_type='file'
+             AND kind IN ('screenshot', 'screen_recording') ORDER BY mtime""",
+        (scan_id,),
+    ).fetchall()
+    root = str(dest_root)
+    return [r for r in rows if not (r["path"] + "/").startswith(root + "/")]
+
+
+def build_move_plan(pairs: List[Tuple[sqlite3.Row, str]], reason: str, dest_root: Path,
+                    scan_finished: float) -> Dict:
+    return {
+        "version": 1,
+        "action": "move",
+        "reason": reason,
+        "dest_root": str(dest_root),
+        "created_at": time.time(),
+        "scan_finished_at": scan_finished,
+        "items": [
+            {"n": i, "path": r["path"], "dest": dest, "size": r["size"], "mtime": r["mtime"],
+             "dataless": bool(r["dataless"])}
+            for i, (r, dest) in enumerate(pairs, 1)
+        ],
+    }
+
+
+def screenshot_move_pairs(rows: List[sqlite3.Row], dest_root: Path) -> List[Tuple[sqlite3.Row, str]]:
+    from organizer.moves import unique_destinations
+
+    wanted = [
+        (r["path"], str(dest_root / RECORDINGS_SUBFOLDER / r["name"])
+         if r["kind"] == "screen_recording" else str(dest_root / r["name"]))
+        for r in rows
+    ]
+    by_path = {r["path"]: r for r in rows}
+    return [(by_path[src], dest) for src, dest in unique_destinations(wanted)]
+
+
+def render_move_preview(plan: Dict, plan_path: Path, title: str) -> str:
+    e = html.escape
+    items = plan["items"]
+    total = sum(i["size"] for i in items)
+    by_folder: Dict[str, int] = defaultdict(int)
+    for it in items:
+        by_folder[short(os.path.dirname(it["path"]))] += 1
+    renamed = sum(os.path.basename(i["dest"]) != os.path.basename(i["path"]) for i in items)
+    icloud = sum(i["dataless"] for i in items)
+    rows = "".join(
+        "<tr>"
+        f"<td>{it['n']}</td>"
+        f"<td>{e(os.path.basename(it['path']))}</td>"
+        f"<td>{e(short(os.path.dirname(it['path'])))}</td>"
+        f"<td>{e(short(os.path.dirname(it['dest'])))}"
+        + (f" as <b>{e(os.path.basename(it['dest']))}</b>"
+           if os.path.basename(it["dest"]) != os.path.basename(it["path"]) else "")
+        + f"</td><td>{e(human(it['size']))}</td>"
+        f"<td>{e(date(it['mtime']))}{' · iCloud only, will be skipped' if it['dataless'] else ''}</td>"
+        "</tr>"
+        for it in items
+    )
+    where = "".join(f"<li>{n} from {e(f)}</li>" for f, n in
+                    sorted(by_folder.items(), key=lambda kv: -kv[1])[:10])
+    notes = []
+    if renamed:
+        notes.append(f"<li>{renamed} file(s) share a name with another file, so they get "
+                     "“(2)” added. Nothing is ever overwritten.</li>")
+    if icloud:
+        notes.append(f"<li>{icloud} file(s) are stored only in iCloud and will be skipped. "
+                     "Download them in Finder first if you want them moved too.</li>")
+    return (
+        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        "<meta name=viewport content='width=device-width,initial-scale=1'>"
+        f"<title>Preview: {e(title.title())}</title><style>{CSS}</style></head><body><main>"
+        f"<h1>Preview: move {e(title)}</h1>"
+        f"<p class=sub>To {e(short(plan['dest_root']))} · based on the scan from "
+        f"{e(date(plan['scan_finished_at']))}</p>"
+        "<div class=safe><b>Nothing has happened yet.</b> This is only a list. Files move "
+        "only after you approve, keep their dates and quality, and the <code>undo</code> "
+        "command puts every one back where it was.</div>"
+        "<div class=tiles>"
+        f"<div class=tile><b>{len(items):,}</b><span>files</span></div>"
+        f"<div class=tile><b>{e(human(total))}</b><span>total size</span></div>"
+        "</div>"
+        "<h2>Where they come from</h2><ul class=obs>" + where + "</ul>"
+        + ("<h2>Good to know</h2><ul class=obs>" + "".join(notes) + "</ul>" if notes else "")
+        + "<h2>How to review</h2><ul class=obs>"
+        "<li>To leave some where they are, note their numbers (#) and add "
+        "<code>--skip 3,17,42</code> when approving.</li>"
+        f"<li>Approve with: <code>python3 -m organizer apply {e(str(plan_path))}</code></li>"
+        "</ul>"
+        "<h2>Files</h2><div class=wrap><table><thead><tr><th>#</th><th>File</th>"
+        "<th>From</th><th>To</th><th>Size</th><th>Modified</th></tr></thead><tbody>"
+        + rows + "</tbody></table></div></main></body></html>"
     )
 
 

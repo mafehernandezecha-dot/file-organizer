@@ -7,8 +7,9 @@ Memobrick business and personal files.
 > `audit`, `report`, and `orders` only *look*: they write an index, reports,
 > and previews inside `~/.file-organizer/` (readable only by your account).
 > The only command that changes files is `apply`, and only for a plan you
-> reviewed, after a Time Machine check and typing `TRASH`. It moves files to
-> the Trash (never permanent deletion), and `undo` puts them back.
+> reviewed, after a Time Machine check and typing `MOVE` or `TRASH`. It moves
+> files or sends them to the Trash (never permanent deletion), and `undo`
+> puts them back.
 
 ## What the audit tells you
 
@@ -78,6 +79,26 @@ Memobrick business and personal files.
    Anything you deny is listed under "Skipped during scan".
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
+
+## Moving screenshots into one folder
+
+```bash
+python3 -m organizer audit                  # refresh the index
+python3 -m organizer screenshots --open     # preview (changes nothing)
+python3 -m organizer apply ~/.file-organizer/plans/move-screenshots_….json   # type MOVE
+python3 -m organizer undo  ~/.file-organizer/journal/….jsonl                 # if needed
+```
+
+Screenshots go to `~/Pictures/Screenshots`, screen recordings to
+`~/Pictures/Screenshots/Screen Recordings` (change with `screenshots_folder`).
+Files keep their names, dates, and quality; a name clash gets “(2)”, nothing
+is overwritten. Moves stay on the same drive, and iCloud-only files are
+skipped. Moving off an iCloud-synced Desktop removes them from iCloud (they
+stay on this Mac and in Time Machine).
+
+**Keep it that way automatically:** press ⌘⇧5 → **Options** → **Other
+Location…** → choose `Pictures/Screenshots`. New screenshots then land there
+directly, with no background service.
 
 ## Clearing out shipping labels or order files
 
@@ -157,6 +178,7 @@ folder structure."* Claude reads the report locally on your Mac.
 | `hash_duplicates` | Check exact duplicates | `true` |
 | `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
 | `label_file_pattern` | Regex searched in file names to spot shipping labels | see `organizer/plans.py` |
+| `screenshots_folder` | Where screenshots are gathered | `~/Pictures/Screenshots` |
 | `order_file_pattern` | Regex for order-file names (first group = order number) | `^#?(\d{5,6})[ _\-]` |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |
 | `state_dir` | Where index + reports live | `~/.file-organizer` |

@@ -22,10 +22,11 @@ from organizer.duplicates import find_duplicates
 from organizer.index import connect, latest_scan_id
 from organizer.plans import (
     DEFAULT_LABEL_PATTERN, DEFAULT_ORDER_PATTERN, build_trash_plan, find_label_files,
-    find_order_files, load_plan, order_number, parse_skip,
+    build_move_plan, find_order_files, find_screen_captures, load_plan, order_number,
+    parse_skip, render_move_preview, screenshot_move_pairs,
     render_trash_preview, save_plan, write_preview,
 )
-from organizer import trash
+from organizer import moves, trash
 from organizer.report import short, write_reports
 from organizer.scanner import scan
 
@@ -134,11 +135,12 @@ def _confirm_backup(ask) -> bool:
 
 
 def cmd_apply(args: argparse.Namespace, ask=input) -> int:
-    if not trash.is_macos():
-        _say("apply only runs on macOS.")
-        return 2
     cfg = load_config(args.config)
     plan = load_plan(args.plan)
+    is_trash = plan["action"] == "trash"
+    if is_trash and not trash.is_macos():
+        _say("Moving to the Trash only works on macOS.")
+        return 2
     skip, bad = parse_skip(args.skip)
     if bad:
         _say(f"Error: couldn't read --skip value(s): {', '.join(bad)}")
@@ -150,32 +152,76 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
     if not _confirm_backup(ask):
         _say("Stopped. Nothing was changed.")
         return 1
-    _say(f"About to move {count:,} file(s) ({human(size)}) to the Trash"
-         f"{f', keeping {len(skip)} you skipped' if skip else ''}.")
-    _say("macOS may ask to let Terminal control Finder — click OK.")
-    if ask("Type TRASH to continue: ").strip() != "TRASH":
+    kept = f", keeping {len(skip)} you skipped" if skip else ""
+    if is_trash:
+        _say(f"About to move {count:,} file(s) ({human(size)}) to the Trash{kept}.")
+        _say("macOS may ask to let Terminal control Finder — click OK.")
+        word = "TRASH"
+    else:
+        _say(f"About to move {count:,} file(s) ({human(size)}) into "
+             f"{short(plan['dest_root'])}{kept}.")
+        word = "MOVE"
+    if ask(f"Type {word} to continue: ").strip() != word:
         _say("Stopped. Nothing was changed.")
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
     journal = cfg.state_dir / "journal" / f"{Path(args.plan).stem}_{stamp}.jsonl"
-    counts = trash.apply_trash(plan, journal, skip, say=_say)
+    if is_trash:
+        counts = trash.apply_trash(plan, journal, skip, say=_say)
+        done = f"Moved to Trash: {counts['trashed']:,}"
+    else:
+        counts = moves.apply_moves(plan, journal, skip, say=_say)
+        done = f"Moved: {counts['moved']:,}"
     _say("")
-    _say(f"Moved to Trash: {counts['trashed']:,} · left alone: {counts['skipped']:,}"
-         f" · failed: {counts['failed']:,}")
+    _say(f"{done} · left alone: {counts['skipped']:,} · failed: {counts['failed']:,}")
     _say("To put everything back:")
     _say(f"  python3 -m organizer undo {journal}")
     return 0 if not counts["failed"] else 1
 
 
 def cmd_undo(args: argparse.Namespace) -> int:
-    if not trash.is_macos():
-        _say("undo only runs on macOS.")
-        return 2
-    counts = trash.undo_trash(args.journal, say=_say)
+    kind = moves.journal_kind(args.journal)
+    if kind == "move":
+        counts = moves.undo_moves(args.journal, say=_say)
+    elif kind == "trash":
+        if not trash.is_macos():
+            _say("Restoring from the Trash only works on macOS.")
+            return 2
+        counts = trash.undo_trash(args.journal, say=_say)
+    else:
+        _say("That run didn't change anything, so there is nothing to undo.")
+        return 0
     _say(f"Restored: {counts['restored']:,} · could not restore: {counts['failed']:,}")
-    if counts["failed"]:
+    if counts["failed"] and kind == "trash":
         _say("Anything not restored is still in the Trash — use Finder's “Put Back”.")
     return 0 if not counts["failed"] else 1
+
+
+def cmd_screenshots(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    conn = connect(cfg.db_path)
+    scan_id = latest_scan_id(conn)
+    scan_row = conn.execute("SELECT finished_at FROM scans WHERE id=?", (scan_id,)).fetchone()
+    dest = cfg.screenshots_folder.resolve()
+    rows = find_screen_captures(conn, scan_id, dest)
+    if not rows:
+        _say(f"No screenshots or screen recordings outside {short(str(dest))}.")
+        return 0
+    plan = build_move_plan(screenshot_move_pairs(rows, dest),
+                           "screenshots and screen recordings", dest, scan_row["finished_at"])
+    plan_path = save_plan(plan, cfg.state_dir / "plans", "move-screenshots")
+    preview = write_preview(render_move_preview(plan, plan_path,
+                                                "screenshots and screen recordings"),
+                            cfg.reports_dir, plan_path)
+    _say(f"Found {len(rows):,} screenshot(s)/recording(s), "
+         f"{human(sum(r['size'] for r in rows))}, to move into {short(str(dest))}.")
+    _say("Nothing has been moved. Review the preview:")
+    _say(f"  {preview}")
+    _say("When it looks right, approve with:")
+    _say(f"  python3 -m organizer apply {plan_path}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(preview)], check=False)
+    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -204,13 +250,18 @@ def build_parser() -> argparse.ArgumentParser:
     lb.add_argument("--open", action="store_true")
     lb.set_defaults(func=cmd_labels)
 
-    ap = sub.add_parser("apply", help="Carry out a reviewed plan (moves to Trash)")
+    sc = sub.add_parser("screenshots", help="Preview moving screenshots into one folder")
+    sc.add_argument("--config", type=Path, default=Path("config.json"))
+    sc.add_argument("--open", action="store_true")
+    sc.set_defaults(func=cmd_screenshots)
+
+    ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)
     ap.add_argument("--skip", help="item numbers to keep, e.g. 3,17,20-25")
     ap.add_argument("--config", type=Path, default=Path("config.json"))
     ap.set_defaults(func=cmd_apply)
 
-    u = sub.add_parser("undo", help="Put back everything a run moved to Trash")
+    u = sub.add_parser("undo", help="Put back everything a run changed")
     u.add_argument("journal", type=Path)
     u.set_defaults(func=cmd_undo)
     return p

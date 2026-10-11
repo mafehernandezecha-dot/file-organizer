@@ -7,6 +7,7 @@ import sqlite3
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Dict, List
 
 from organizer.config import Config
@@ -157,7 +158,8 @@ def _observations(rows: List[sqlite3.Row], a: Audit) -> List[str]:
 
     # Screenshots and screen recordings share one destination: Screenshots/
     # (recordings in a "Screen Recordings" subfolder), apart from photos/videos.
-    caps = [r for r in rows if r["kind"] in ("screenshot", "screen_recording")]
+    caps = [r for r in rows if r["kind"] in ("screenshot", "screen_recording")
+            and "Screenshots" not in Path(r["path"]).parts[:-1]]
     if caps:
         n_rec = sum(r["kind"] == "screen_recording" for r in caps)
         where = Counter(short_root(r["root"]) for r in caps)

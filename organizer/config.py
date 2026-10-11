@@ -83,6 +83,7 @@ class Config:
     loose_photos_are_business: bool = False
     order_file_pattern: str = ""
     label_file_pattern: str = ""
+    screenshots_folder: Path = Path.home() / "Pictures" / "Screenshots"
     business_keywords: List[str] = field(
         default_factory=lambda: ["memobrick", "mosaic", "brick", "baseplate", "shopify"]
     )
@@ -115,6 +116,8 @@ def load_config(path: Path) -> Config:
     cfg.loose_photos_are_business = bool(data.get("loose_photos_are_business", False))
     cfg.order_file_pattern = str(data.get("order_file_pattern", ""))
     cfg.label_file_pattern = str(data.get("label_file_pattern", ""))
+    if "screenshots_folder" in data:
+        cfg.screenshots_folder = _expand(data["screenshots_folder"])
     if "business_keywords" in data:
         cfg.business_keywords = [k.lower() for k in data["business_keywords"]]
     return cfg
