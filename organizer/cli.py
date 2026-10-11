@@ -161,7 +161,7 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
         _say(f"About to move {count:,} file(s) ({human(size)}) into "
              f"{short(plan['dest_root'])}{kept}.")
         word = "MOVE"
-    if ask(f"Type {word} to continue: ").strip() != word:
+    if ask(f"Type {word} to continue: ").strip().upper() != word:
         _say("Stopped. Nothing was changed.")
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")

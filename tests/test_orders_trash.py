@@ -150,7 +150,7 @@ class OrdersTest(unittest.TestCase):
              mock.patch.object(trash, "latest_backup_age_hours", return_value=None), \
              mock.patch.object(trash, "apply_trash") as do_it:
             self.assertEqual(cli.cmd_apply(args, ask=lambda q: "no"), 1)
-            answers = iter(["yes", "trash"])  # wrong case: must be exactly TRASH
+            answers = iter(["yes", "move"])  # wrong word for a trash plan
             self.assertEqual(cli.cmd_apply(args, ask=lambda q: next(answers)), 1)
             do_it.assert_not_called()
         with mock.patch.object(trash, "is_macos", return_value=True), \

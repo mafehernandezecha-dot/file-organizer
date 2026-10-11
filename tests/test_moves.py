@@ -117,7 +117,7 @@ class ScreenshotMoveTest(unittest.TestCase):
         plan_path = next((self.cfg.state_dir / "plans").glob("move-screenshots_*.json"))
         args = cli.build_parser().parse_args(["apply", str(plan_path), "--config", str(cfg_path)])
         with mock.patch.object(trash, "latest_backup_age_hours", return_value=2.0):
-            self.assertEqual(cli.cmd_apply(args, ask=lambda q: "TRASH"), 1)  # wrong word
+            self.assertEqual(cli.cmd_apply(args, ask=lambda q: "trash"), 1)  # wrong word
             for p in self.shots:
                 self.assertTrue(p.exists())
             self.assertEqual(cli.cmd_apply(args, ask=lambda q: "MOVE"), 0)
@@ -131,3 +131,24 @@ class ScreenshotMoveTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ConfirmWordCaseTest(unittest.TestCase):
+    def test_lowercase_confirmation_is_accepted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            shot = write(home / "Desktop/Screenshot 1.png", b"s")
+            dest = home / "Pictures/Screenshots"
+            (home / "Pictures").mkdir()
+            cfg_path = home / "config.json"
+            cfg_path.write_text(json.dumps({
+                "approved_folders": [str(home / "Desktop"), str(home / "Pictures")],
+                "state_dir": str(home / "state"), "screenshots_folder": str(dest)}))
+            cli.main(["audit", "--config", str(cfg_path), "--no-hash"])
+            cli.main(["screenshots", "--config", str(cfg_path)])
+            plan = next((home / "state/plans").glob("move-screenshots_*.json"))
+            args = cli.build_parser().parse_args(["apply", str(plan), "--config", str(cfg_path)])
+            with mock.patch.object(trash, "latest_backup_age_hours", return_value=1.0):
+                self.assertEqual(cli.cmd_apply(args, ask=lambda q: " move "), 0)
+            self.assertFalse(shot.exists())
+            self.assertTrue((dest / "Screenshot 1.png").exists())
