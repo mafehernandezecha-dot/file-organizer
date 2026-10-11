@@ -32,6 +32,7 @@ from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
 from organizer.videos import build_videos_plan
+from organizer.leftovers import build_leftovers, render_leftovers
 from organizer import vision as vision_mod
 from organizer.report import short, write_reports
 from organizer.scanner import scan
@@ -548,6 +549,32 @@ def cmd_folders(args: argparse.Namespace, ask=input) -> int:
     return 0
 
 
+def cmd_leftovers(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    scanned = {str(r) for r in cfg.roots}
+    cfg.intake_folders = [p for p in cfg.intake_folders if str(p) in scanned]
+    data = build_leftovers(cfg)
+    out = cfg.reports_dir / f"leftovers_{time.strftime('%Y-%m-%d_%H%M')}.html"
+    cfg.reports_dir.mkdir(parents=True, exist_ok=True)
+    out.write_text(render_leftovers(data), encoding="utf-8")
+    os.chmod(out, 0o600)
+    from collections import Counter
+    _say(f"Left alone during the last approval: {len(data['skipped']):,}")
+    for why, n in Counter(i["why"] for i in data["skipped"]).most_common():
+        _say(f"  • {n} — {why}")
+    _say(f"Kept in place on purpose: {len(data['kept']):,}")
+    for why, n in Counter(i["why"] for i in data["kept"]).most_common():
+        _say(f"  • {n} — {why}")
+    _say(f"Still in Downloads / Desktop / loose in Documents: {len(data['still_here']):,}")
+    for where, n in Counter(i["where"] for i in data["still_here"]).most_common():
+        _say(f"  • {n} in {where}")
+    _say("Nothing was changed.")
+    _say(f"Details: {out}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(out)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -615,6 +642,11 @@ def build_parser() -> argparse.ArgumentParser:
     sch.add_argument("--day", default="monday")
     sch.add_argument("--time", default="09:00")
     sch.set_defaults(func=cmd_schedule)
+
+    lo = sub.add_parser("leftovers", help="Show what isn't organized yet, and why (read-only)")
+    lo.add_argument("--config", type=Path, default=Path("config.json"))
+    lo.add_argument("--open", action="store_true")
+    lo.set_defaults(func=cmd_leftovers)
 
     fo = sub.add_parser("folders", help="Create the full folder structure (empty folders)")
     fo.add_argument("--config", type=Path, default=Path("config.json"))

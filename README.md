@@ -80,6 +80,18 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## What isn't organized yet?
+
+```bash
+python3 -m organizer leftovers --open
+```
+
+Read-only. Lists (1) items left alone during the last approval and why (e.g.
+iCloud-only — right-click → Download Now; changed since the scan; name clash),
+(2) items kept in place on purpose (private-looking files, apps, code
+folders), and (3) everything still sitting in Downloads, Desktop and loose in
+Documents.
+
 ## The full folder structure
 
 ```bash
