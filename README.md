@@ -112,6 +112,19 @@ Command Line Tools; results are cached. Use `--no-vision` to skip it.
 Top-level folders in Downloads (an unzipped editor build, a photo shoot)
 move as one piece, so nothing inside them is scattered.
 
+## Trashing extra copies of duplicates
+
+```bash
+python3 -m organizer audit                 # fresh scan (finds duplicates)
+python3 -m organizer duplicates --open     # preview (changes nothing)
+python3 -m organizer apply ~/.file-organizer/plans/trash-duplicates_….json   # type TRASH
+```
+
+Only byte-for-byte identical files (SHA-256) count. One copy of every set is
+kept: organized folders beat Downloads/Desktop, a clean name beats
+“copy”/“(1)”, then the older file. Right before each extra copy is trashed,
+the kept copy is re-checked; if it's gone or changed, the extra stays.
+
 ## Moving screenshots into one folder
 
 ```bash

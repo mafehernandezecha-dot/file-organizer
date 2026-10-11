@@ -110,6 +110,27 @@ def still_matches(item: Dict) -> Tuple[bool, str]:
     return True, ""
 
 
+def keeper_ok(item: Dict) -> Tuple[bool, str]:
+    """For duplicates: the copy we keep must still exist and still match."""
+    from organizer.duplicates import quick_hash
+
+    keep = item["keep"]
+    if keep == item["path"]:
+        return False, "would trash the copy meant to be kept"
+    try:
+        st = os.lstat(keep)
+    except OSError:
+        return False, "the copy to keep is gone, so this one stays"
+    if not os.path.isfile(keep) or st.st_size != item["keep_size"]:
+        return False, "the copy to keep has changed, so this one stays"
+    try:
+        if quick_hash(keep, st.st_size) != quick_hash(item["path"], item["size"]):
+            return False, "no longer identical to the copy to keep"
+    except OSError as e:
+        return False, f"couldn't compare with the copy to keep: {e.strerror}"
+    return True, ""
+
+
 def apply_trash(
     plan: Dict,
     journal_path: Path,
@@ -136,6 +157,8 @@ def apply_trash(
                 log({"status": "skipped", "path": it["path"], "why": "you chose to keep it"})
                 continue
             ok, why = still_matches(it)
+            if ok and it.get("keep"):
+                ok, why = keeper_ok(it)
             if not ok:
                 counts["skipped"] += 1
                 log({"status": "skipped", "path": it["path"], "why": why})

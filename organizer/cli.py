@@ -27,6 +27,7 @@ from organizer.plans import (
     render_trash_preview, save_plan, write_preview,
 )
 from organizer import moves, trash
+from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
 from organizer import vision as vision_mod
 from organizer.report import short, write_reports
@@ -259,6 +260,33 @@ def cmd_sort(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_duplicates(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    conn = connect(cfg.db_path)
+    scan_id = latest_scan_id(conn)
+    scan_row = conn.execute("SELECT finished_at FROM scans WHERE id=?", (scan_id,)).fetchone()
+    hashed = conn.execute("SELECT COUNT(*) FROM files WHERE scan_id=? AND full_hash IS NOT NULL",
+                          (scan_id,)).fetchone()[0]
+    if not hashed:
+        _say("The latest scan didn't check duplicates. Run `python3 -m organizer audit` first.")
+        return 1
+    plan = build_duplicates_plan(conn, scan_id, cfg, scan_row["finished_at"])
+    if not plan["items"]:
+        _say("No duplicates found in the latest scan.")
+        return 0
+    plan_path = save_plan(plan, cfg.state_dir / "plans", "trash-duplicates")
+    preview = write_preview(render_duplicates_preview(plan, plan_path), cfg.reports_dir, plan_path)
+    _say(f"{len(plan['sets']):,} duplicate set(s): {len(plan['items']):,} extra copies, "
+         f"{human(sum(i['size'] for i in plan['items']))}. One copy of each is kept.")
+    _say("Nothing has been moved. Review the preview:")
+    _say(f"  {preview}")
+    _say("When it looks right, approve with:")
+    _say(f"  python3 -m organizer apply {plan_path}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(preview)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -296,6 +324,11 @@ def build_parser() -> argparse.ArgumentParser:
     so.add_argument("--no-vision", action="store_true",
                     help="don't look inside images (sort by names only)")
     so.set_defaults(func=cmd_sort)
+
+    du = sub.add_parser("duplicates", help="Preview trashing extra copies of duplicates")
+    du.add_argument("--config", type=Path, default=Path("config.json"))
+    du.add_argument("--open", action="store_true")
+    du.set_defaults(func=cmd_duplicates)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)
