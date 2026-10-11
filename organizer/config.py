@@ -85,6 +85,7 @@ class Config:
     label_file_pattern: str = ""
     screenshots_folder: Path = Path.home() / "Pictures" / "Screenshots"
     business_root: Path = Path.home() / "Documents" / "01 MEMOBRICK BUSINESS"
+    memobrick_image_tag: str = "Red"  # Finder tag for Memobrick images; "" = none
     # Unless set, these live next to the business folder (normally ~/Documents).
     personal_root_override: Optional[Path] = None
     intake_root_override: Optional[Path] = None
@@ -138,6 +139,8 @@ def load_config(path: Path) -> Config:
     cfg.loose_photos_are_business = bool(data.get("loose_photos_are_business", False))
     cfg.order_file_pattern = str(data.get("order_file_pattern", ""))
     cfg.label_file_pattern = str(data.get("label_file_pattern", ""))
+    if "memobrick_image_tag" in data:
+        cfg.memobrick_image_tag = str(data["memobrick_image_tag"] or "")
     if "business_root" in data:
         cfg.business_root = _expand(data["business_root"])
     for key in ("personal_root", "intake_root"):

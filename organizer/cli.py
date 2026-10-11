@@ -27,7 +27,7 @@ from organizer.plans import (
     parse_skip, render_move_preview, screenshot_move_pairs,
     render_trash_preview, save_plan, write_preview,
 )
-from organizer import moves, schedule, trash, weekly
+from organizer import moves, schedule, tags, trash, weekly
 from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_plan
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
@@ -139,11 +139,31 @@ def _confirm_backup(ask) -> bool:
     return ask("Is your latest backup from today? Type yes to continue: ").strip().lower() == "yes"
 
 
-def execute_plan(plan: dict, journal: Path, skip=()):
+def _auto_tag(cfg, journal: Path) -> int:
+    """Tag Memobrick images that this run just moved into the business folder."""
+    name = cfg.memobrick_image_tag
+    xa = tags.backend()
+    if not name or xa is None or not journal.exists():
+        return 0
+    root = str(cfg.business_root) + os.sep
+    moved = [e["dest"] for e in trash.read_journal(journal)
+             if e["status"] == "moved" and e["dest"].startswith(root)]
+    targets = []
+    for d in moved:
+        if os.path.isdir(d):
+            targets.extend(tags.images_under(Path(d)))
+        elif tags.is_memobrick_image(d):
+            targets.append(d)
+    return tags.apply_tags(targets, name, journal, xa, say=_say)["tagged"] if targets else 0
+
+
+def execute_plan(plan: dict, journal: Path, skip=(), cfg=None):
     """Carry out a reviewed plan. Returns (summary text, counts)."""
     if plan["action"] == "cleanup":
         mp, tp = split_plan(plan)
         mc = moves.apply_moves(mp, journal, skip, say=_say)
+        if cfg:
+            _auto_tag(cfg, journal)
         tc = trash.apply_trash(tp, journal, skip, say=_say)
         counts = {"skipped": mc["skipped"] + tc["skipped"], "failed": mc["failed"] + tc["failed"]}
         return f"Kept together: {mc['moved']:,} · moved to Trash: {tc['trashed']:,}", counts
@@ -151,7 +171,9 @@ def execute_plan(plan: dict, journal: Path, skip=()):
         counts = trash.apply_trash(plan, journal, skip, say=_say)
         return f"Moved to Trash: {counts['trashed']:,}", counts
     counts = moves.apply_moves(plan, journal, skip, say=_say)
-    return f"Moved: {counts['moved']:,}", counts
+    tagged = _auto_tag(cfg, journal) if cfg else 0
+    extra = f" · {cfg.memobrick_image_tag}-tagged: {tagged:,}" if tagged else ""
+    return f"Moved: {counts['moved']:,}{extra}", counts
 
 
 def cmd_apply(args: argparse.Namespace, ask=input) -> int:
@@ -194,7 +216,7 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
     journal = cfg.state_dir / "journal" / f"{Path(args.plan).stem}_{stamp}.jsonl"
-    done, counts = execute_plan(plan, journal, skip)
+    done, counts = execute_plan(plan, journal, skip, cfg)
     _say("")
     _say(f"{done} · left alone: {counts['skipped']:,} · failed: {counts['failed']:,}")
     _say("To put everything back:")
@@ -203,8 +225,16 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
 
 
 def cmd_undo(args: argparse.Namespace) -> int:
-    statuses = {e["status"] for e in trash.read_journal(args.journal)}
+    entries = trash.read_journal(args.journal)
+    statuses = {e["status"] for e in entries}
+    if "tagged" in statuses:
+        xa = tags.backend()
+        if xa is not None:
+            tags.undo_tags(entries, xa, say=_say)
+            _say("Removed the tags this run added.")
     if not statuses & {"moved", "trashed"}:
+        if "tagged" in statuses:
+            return 0
         _say("That run didn't change anything, so there is nothing to undo.")
         return 0
     if "trashed" in statuses and not trash.is_macos():
@@ -386,7 +416,7 @@ def cmd_approve(args: argparse.Namespace, ask=input) -> int:
         stamp = time.strftime("%Y-%m-%d_%H%M%S")
         journal = cfg.state_dir / "journal" / f"{Path(x['plan']).stem}_{stamp}.jsonl"
         _say(f"{x['title']}…")
-        done, counts = execute_plan(plan, journal)
+        done, counts = execute_plan(plan, journal, cfg=cfg)
         _say(f"  {done} · left alone: {counts['skipped']:,} · failed: {counts['failed']:,}")
         failed += counts["failed"]
         x["approved"] = True
@@ -433,6 +463,40 @@ def cmd_schedule(args: argparse.Namespace) -> int:
     _say("A Terminal window will open, scan (read-only), and show the weekly report.")
     _say(f"(Settings file: {plist}. Turn off any time:  python3 -m organizer schedule --off)")
     return 0
+
+
+def cmd_tag(args: argparse.Namespace, ask=input) -> int:
+    cfg = load_config(args.config)
+    name = args.tag
+    xa = tags.backend()
+    if xa is None:
+        _say("Finder tags only work on macOS.")
+        return 2
+    root = args.folder.expanduser().resolve() if args.folder else cfg.business_root
+    if not root.is_dir():
+        _say(f"Folder not found: {root}")
+        return 1
+    found = tags.untagged_images(root, name, xa)
+    todo = found["todo"]
+    _say(f"Images in {short(str(root))}: {len(todo) + len(found['already']):,}")
+    _say(f"  already {name}: {len(found['already']):,} · to tag: {len(todo):,}"
+         + (f" · iCloud-only, skipped: {len(found['icloud']):,}" if found["icloud"] else ""))
+    if not todo:
+        _say("Nothing to do.")
+        return 0
+    for p in todo[:5]:
+        _say(f"  e.g. {short(p)}")
+    _say("Only the Finder tag is added; the images themselves don't change.")
+    if ask("Type TAG to continue: ").strip().upper() != "TAG":
+        _say("Stopped. Nothing was changed.")
+        return 1
+    journal = cfg.state_dir / "journal" / f"tag-{name.lower()}_{time.strftime('%Y-%m-%d_%H%M%S')}.jsonl"
+    counts = tags.apply_tags(todo, name, journal, xa, say=_say)
+    _say(f"{name}-tagged: {counts['tagged']:,} · failed: {counts['failed']:,}")
+    _say(f"Click “{name}” under Tags in the Finder sidebar to see them all.")
+    _say("To remove the tags this added:")
+    _say(f"  python3 -m organizer undo {journal}")
+    return 0 if not counts["failed"] else 1
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -502,6 +566,12 @@ def build_parser() -> argparse.ArgumentParser:
     sch.add_argument("--day", default="monday")
     sch.add_argument("--time", default="09:00")
     sch.set_defaults(func=cmd_schedule)
+
+    tg = sub.add_parser("tag", help="Add a Finder tag (default Red) to every Memobrick image")
+    tg.add_argument("--config", type=Path, default=Path("config.json"))
+    tg.add_argument("--tag", default="Red")
+    tg.add_argument("--folder", type=Path, help="folder to tag (default: the business folder)")
+    tg.set_defaults(func=cmd_tag)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)

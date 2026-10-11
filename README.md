@@ -80,6 +80,19 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## Red tag on Memobrick images
+
+```bash
+python3 -m organizer tag          # adds the Red Finder tag to every image in 01 MEMOBRICK BUSINESS
+```
+
+Shows the count, asks you to type `TAG`, and only adds the tag (existing tags
+are kept; contents, names and dates don't change). Images inside code folders
+and iCloud-only files are skipped. From then on, images that `sort`/`approve`
+file into the business folder get the tag automatically
+(`memobrick_image_tag` in config; `""` turns it off). `undo` removes only the
+tags a run added. Click **Red** under Tags in the Finder sidebar to see them all.
+
 ## Filing everything from Downloads, Desktop and Documents
 
 `sort` now finds a home for every item, not just Memobrick files:
