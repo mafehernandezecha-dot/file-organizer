@@ -214,3 +214,15 @@ class LabelsTest(unittest.TestCase):
             self.assertTrue(f.exists())
             plan = load_plan(next((state / "plans").glob("trash-labels_*.json")))
             self.assertEqual(plan["reason"], "shipping labels")
+
+
+class PreviewColumnsTest(unittest.TestCase):
+    def test_folder_grouping_has_single_folder_column(self):
+        plan = {"items": [{"n": 1, "path": "/x/Downloads/a.pdf", "size": 1, "mtime": 0,
+                           "dataless": False}], "scan_finished_at": 0}
+        html = render_trash_preview(plan, Path("p.json"), "shipping labels", "Folder",
+                                    lambda p: os.path.dirname(p))
+        self.assertEqual(html.count("<th>Folder</th>"), 1)
+        html = render_trash_preview(plan, Path("p.json"), "order files", "Order", lambda p: "1")
+        self.assertIn("<th>Order</th>", html)
+        self.assertIn("orders</span>", html)

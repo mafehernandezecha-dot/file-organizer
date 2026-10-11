@@ -114,6 +114,8 @@ def render_trash_preview(
     for it in items:
         by_folder[short(os.path.dirname(it["path"]))] += 1
 
+    # Grouping by folder would just repeat the Folder column, so hide it then.
+    show_group = group_label.lower() != "folder"
     rows = []
     for order in sorted(groups):
         first = True
@@ -121,7 +123,7 @@ def render_trash_preview(
             rows.append(
                 "<tr>"
                 f"<td>{it['n']}</td>"
-                f"<td>{e(order) if first else ''}</td>"
+                + (f"<td>{e(order) if first else ''}</td>" if show_group else "") +
                 f"<td>{e(os.path.basename(it['path']))}</td>"
                 f"<td>{e(short(os.path.dirname(it['path'])))}</td>"
                 f"<td>{e(human(it['size']))}</td>"
@@ -142,7 +144,8 @@ def render_trash_preview(
         "Finder's “Put Back” or the <code>undo</code> command.</div>"
         "<div class=tiles>"
         f"<div class=tile><b>{len(items):,}</b><span>files</span></div>"
-        f"<div class=tile><b>{len(groups):,}</b><span>{e(group_label.lower())} groups</span></div>"
+        + (f"<div class=tile><b>{len(groups):,}</b><span>{e(group_label.lower())}s</span></div>"
+           if show_group else "") +
         f"<div class=tile><b>{e(human(total))}</b><span>total size</span></div>"
         "</div>"
         "<h2>Where they are</h2><ul class=obs>" + where + "</ul>"
@@ -152,7 +155,8 @@ def render_trash_preview(
         "<code>--skip 3,17,42</code> when approving.</li>"
         f"<li>Approve with: <code>python3 -m organizer apply {e(str(plan_path))}</code></li>"
         "</ul>"
-        f"<h2>Files</h2><div class=wrap><table><thead><tr><th>#</th><th>{e(group_label)}</th>"
+        "<h2>Files</h2><div class=wrap><table><thead><tr><th>#</th>"
+        + (f"<th>{e(group_label)}</th>" if show_group else "") +
         "<th>File</th><th>Folder</th><th>Size</th><th>Modified</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table></div></main></body></html>"
     )
