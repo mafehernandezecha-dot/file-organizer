@@ -27,6 +27,7 @@ from organizer.plans import (
     render_trash_preview, save_plan, write_preview,
 )
 from organizer import moves, trash
+from organizer.sorting import build_sort_plan, render_sort_preview
 from organizer.report import short, write_reports
 from organizer.scanner import scan
 
@@ -224,6 +225,34 @@ def cmd_screenshots(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sort(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    conn = connect(cfg.db_path)
+    scan_id = latest_scan_id(conn)
+    scan_row = conn.execute("SELECT finished_at FROM scans WHERE id=?", (scan_id,)).fetchone()
+    scanned = {str(r) for r in cfg.roots}
+    cfg.intake_folders = [p for p in cfg.intake_folders if str(p) in scanned]
+    if not cfg.intake_folders:
+        _say("None of the intake folders (Downloads, Desktop) are in approved_folders.")
+        return 1
+    _say("Reading names and document text (on this Mac only)…")
+    plan = build_sort_plan(conn, scan_id, cfg, scan_row["finished_at"])
+    plan_path = save_plan(plan, cfg.state_dir / "plans", "sort-memobrick")
+    preview = write_preview(render_sort_preview(plan, plan_path), cfg.reports_dir, plan_path)
+    n_items = len(plan["items"])
+    _say(f"To file: {n_items:,} item(s), {human(sum(i['size'] for i in plan['items']))} "
+         f"→ {short(plan['dest_root'])}")
+    _say(f"Need your decision (staying put): {len(plan['review']):,}")
+    _say("Nothing has been moved. Review the preview:")
+    _say(f"  {preview}")
+    if n_items:
+        _say("When it looks right, approve with:")
+        _say(f"  python3 -m organizer apply {plan_path}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(preview)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -254,6 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--config", type=Path, default=Path("config.json"))
     sc.add_argument("--open", action="store_true")
     sc.set_defaults(func=cmd_screenshots)
+
+    so = sub.add_parser("sort", help="Preview filing Memobrick items from Downloads/Desktop")
+    so.add_argument("--config", type=Path, default=Path("config.json"))
+    so.add_argument("--open", action="store_true")
+    so.set_defaults(func=cmd_sort)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)

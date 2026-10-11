@@ -80,6 +80,29 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## Filing Memobrick items from Downloads and Desktop
+
+```bash
+python3 -m organizer audit             # refresh the index
+python3 -m organizer sort --open       # preview (changes nothing)
+python3 -m organizer apply ~/.file-organizer/plans/sort-memobrick_….json   # type MOVE
+python3 -m organizer undo  ~/.file-organizer/journal/….jsonl               # if needed
+```
+
+Items go into `~/Documents/01 MEMOBRICK BUSINESS/<A–I section>/…`, creating
+only the folders that are needed. Each item gets a reason and a confidence:
+
+- **High**: a clear clue: customer ID (`S-6SUKU6NGJR-photo.jpg` → Customer
+  Photos/S-6SUKU6NGJR), Shopify export, logo, invoice, instructions, mockup,
+  AI tool name, ad/campaign words — or the document's own text (PDF, Word,
+  Excel, PowerPoint, CSV are peeked locally, first few thousand characters).
+- **Check**: a reasonable guess, e.g. loose photos → Creative Assets/Photos/<year>.
+- **Need your decision**: anything unclear, private-looking, installers,
+  archives, and unknown software folders stay where they are.
+
+Top-level folders in Downloads (an unzipped editor build, a photo shoot)
+move as one piece, so nothing inside them is scattered.
+
 ## Moving screenshots into one folder
 
 ```bash
@@ -178,6 +201,8 @@ folder structure."* Claude reads the report locally on your Mac.
 | `hash_duplicates` | Check exact duplicates | `true` |
 | `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
 | `label_file_pattern` | Regex searched in file names to spot shipping labels | see `organizer/plans.py` |
+| `business_root` | Where Memobrick items are filed | `~/Documents/01 MEMOBRICK BUSINESS` |
+| `intake_folders` | Folders `sort` files from | `~/Downloads`, `~/Desktop` |
 | `screenshots_folder` | Where screenshots are gathered | `~/Pictures/Screenshots` |
 | `order_file_pattern` | Regex for order-file names (first group = order number) | `^#?(\d{5,6})[ _\-]` |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |

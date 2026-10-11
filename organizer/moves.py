@@ -41,6 +41,15 @@ def unique_destinations(pairs: List[tuple]) -> List[tuple]:
     return out
 
 
+def folder_still_matches(item: Dict):
+    path = item["path"]
+    if os.path.islink(path) or not os.path.isdir(path):
+        return False, "no longer there as a folder"
+    if abs(os.lstat(path).st_mtime - item["mtime"]) > 1:
+        return False, "folder contents changed since the scan"
+    return True, ""
+
+
 def _nearest_existing(path: str) -> str:
     p = os.path.dirname(path)
     while p and not os.path.exists(p):
@@ -78,7 +87,8 @@ def apply_moves(
             if it["n"] in skip:
                 skipped(it, "you chose to keep it where it is")
                 continue
-            ok, why = still_matches(it)
+            ok, why = (folder_still_matches(it) if it.get("unit") == "folder"
+                       else still_matches(it))
             if not ok:
                 skipped(it, why)
                 continue
@@ -104,7 +114,8 @@ def apply_moves(
                 log({"status": "failed", "path": src, "why": e.strerror or str(e)})
                 continue
             moved_st = os.lstat(dest)
-            if moved_st.st_size != st.st_size or moved_st.st_ino != st.st_ino:
+            if moved_st.st_ino != st.st_ino or (
+                    it.get("unit") != "folder" and moved_st.st_size != st.st_size):
                 counts["failed"] += 1
                 log({"status": "failed", "path": src, "dest": dest,
                      "why": "verification after move did not match"})
