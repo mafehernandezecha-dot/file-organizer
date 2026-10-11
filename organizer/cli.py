@@ -229,6 +229,10 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
 def cmd_undo(args: argparse.Namespace) -> int:
     entries = trash.read_journal(args.journal)
     statuses = {e["status"] for e in entries}
+    if "removed_dir" in statuses:
+        c = structure.undo_remove(entries)
+        _say(f"Recreated {c['restored']:,} folder(s).")
+        return 0 if not c["failed"] else 1
     if "created_dir" in statuses:
         c = structure.undo_create(entries, say=_say)
         _say(f"Removed {c['restored']:,} empty folder(s) this run created.")
@@ -575,6 +579,27 @@ def cmd_leftovers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_empty_folders(args: argparse.Namespace, ask=input) -> int:
+    cfg = load_config(args.config)
+    found = structure.empty_folders(cfg)
+    if not found:
+        _say("No empty folders.")
+        return 0
+    _say(f"{len(found):,} empty folder(s), e.g.:")
+    for p in found[:10]:
+        _say(f"  {short(str(p))}")
+    _say("The main sections (A–J) stay. Folders come back automatically when files arrive.")
+    if ask("Type REMOVE to delete these empty folders: ").strip().upper() != "REMOVE":
+        _say("Stopped. Nothing was changed.")
+        return 1
+    journal = cfg.state_dir / "journal" / f"empty-folders_{time.strftime('%Y-%m-%d_%H%M%S')}.jsonl"
+    n = structure.remove_empty(found, journal)
+    _say(f"Removed {n:,} empty folder(s).")
+    _say("To bring them back:")
+    _say(f"  python3 -m organizer undo {journal}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -647,6 +672,10 @@ def build_parser() -> argparse.ArgumentParser:
     lo.add_argument("--config", type=Path, default=Path("config.json"))
     lo.add_argument("--open", action="store_true")
     lo.set_defaults(func=cmd_leftovers)
+
+    ef = sub.add_parser("empty-folders", help="Remove empty subfolders (keeps the main sections)")
+    ef.add_argument("--config", type=Path, default=Path("config.json"))
+    ef.set_defaults(func=cmd_empty_folders)
 
     fo = sub.add_parser("folders", help="Create the full folder structure (empty folders)")
     fo.add_argument("--config", type=Path, default=Path("config.json"))

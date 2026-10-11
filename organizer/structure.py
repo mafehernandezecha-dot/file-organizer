@@ -94,3 +94,72 @@ def undo_create(entries: List[Dict], say: Callable[[str], None] = print) -> Dict
             counts["failed"] += 1
             say(f"! Kept {d} — it has files in it now.")
     return counts
+
+
+# --- removing empty folders ----------------------------------------------------
+
+IGNORABLE = {".DS_Store"}  # Finder's view settings; not your content
+
+
+def _is_empty(path: str) -> bool:
+    try:
+        return all(name in IGNORABLE for name in os.listdir(path))
+    except OSError:
+        return False
+
+
+def empty_folders(cfg: Config) -> List[Path]:
+    """Empty subfolders under the organized folders, deepest first.
+
+    Never the organized roots themselves or the A–J business sections.
+    A folder whose only contents are empty folders counts as empty too.
+    """
+    keep = {cfg.business_root, cfg.personal_root, cfg.intake_root}
+    keep |= {cfg.business_root / s for s in BUSINESS}
+    found: List[Path] = []
+    for root in (cfg.business_root, cfg.personal_root, cfg.intake_root):
+        if not root.is_dir():
+            continue
+        removable = set()
+        for dirpath, dirnames, filenames in os.walk(root, topdown=False, followlinks=False):
+            p = Path(dirpath)
+            real_files = [f for f in filenames if f not in IGNORABLE]
+            subdirs_gone = all((p / d) in removable for d in dirnames)
+            if not real_files and subdirs_gone and p not in keep and not p.is_symlink():
+                removable.add(p)
+                found.append(p)
+    return found  # os.walk bottom-up order: children before parents
+
+
+def remove_empty(folders: List[Path], journal: Path) -> int:
+    journal.parent.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    with open(journal, "a", encoding="utf-8") as j:
+        os.chmod(journal, 0o600)
+        for p in folders:
+            if not _is_empty(str(p)):
+                continue  # something arrived since the preview
+            for name in IGNORABLE:
+                try:
+                    (p / name).unlink()
+                except FileNotFoundError:
+                    pass
+            try:
+                p.rmdir()
+            except OSError:
+                continue
+            removed += 1
+            j.write(json.dumps({"status": "removed_dir", "path": str(p), "at": time.time()}) + "\n")
+    return removed
+
+
+def undo_remove(entries: List[Dict]) -> Dict[str, int]:
+    counts = {"restored": 0, "failed": 0}
+    for e in entries:
+        if e.get("status") == "removed_dir":
+            try:
+                Path(e["path"]).mkdir(parents=True, exist_ok=True)
+                counts["restored"] += 1
+            except OSError:
+                counts["failed"] += 1
+    return counts

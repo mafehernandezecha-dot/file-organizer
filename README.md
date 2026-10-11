@@ -104,6 +104,13 @@ Marketing, Campaigns, Holiday Campaigns, Discount Promotions, Strategy &
 Reports), `02 PERSONAL DOCUMENTS` and `05 INTAKE`, even if they start empty.
 Only empty folders are created; `undo` removes them again while still empty.
 
+To clear out empty folders again (keeps the A–J sections; folders come back
+automatically when files arrive):
+
+```bash
+python3 -m organizer empty-folders     # type REMOVE; undo recreates them
+```
+
 Where marketing material goes: ad **images** → F Creative Assets/Ad Creatives,
 ad **videos** → F Creative Assets/Videos, marketing **documents** → the
 matching D Marketing subfolder.
