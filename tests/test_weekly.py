@@ -75,7 +75,9 @@ class WeeklyTest(unittest.TestCase):
             for p in patches:
                 p.stop()
         self.assertTrue((self.home / "Pictures/Screenshots/Screenshot 2026-10-12 at 9.00.00.png").exists())
-        self.assertEqual(self.f["dup1"].exists() + self.f["dup2"].exists(), 1)
+        self.assertFalse(self.f["dup1"].exists() or self.f["dup2"].exists())
+        review = self.home / "Documents/05 INTAKE/Documents to Review"
+        self.assertEqual(sorted(p.name for p in review.iterdir()), ["flyer.pdf"])  # one copy kept
         for k in ("label", "dmg", "shot", "logo"):
             self.assertFalse(self.f[k].exists(), k)
         logo = self.home / "Documents/01 MEMOBRICK BUSINESS/A Brand & Identity/Logos & Graphics/memobrick logo.png"

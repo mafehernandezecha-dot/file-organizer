@@ -99,11 +99,12 @@ class AnalyzeAndSortTest(unittest.TestCase):
 
         plan = build_sort_plan(self.conn, self.scan_id, self.cfg, 0, looks)
         got = {Path(i["path"]).name: i["section"] for i in plan["items"]}
-        self.assertEqual(got["final.png"], "A Brand & Identity/Logos & Graphics")
-        self.assertEqual(got["IMG_2000.jpg"], "F Creative Assets/Photos with People")
-        self.assertTrue(got["IMG_2001.jpg"].startswith("F Creative Assets/Photos/"))
+        biz = "01 MEMOBRICK BUSINESS/"
+        self.assertEqual(got["final.png"], biz + "A Brand & Identity/Logos & Graphics")
+        self.assertEqual(got["IMG_2000.jpg"], biz + "F Creative Assets/Photos with People")
+        self.assertTrue(got["IMG_2001.jpg"].startswith(biz + "F Creative Assets/Photos/"))
         # A clear name rule wins over what the picture shows.
-        self.assertEqual(got["memobrick logo dark.png"], "A Brand & Identity/Logos & Graphics")
+        self.assertEqual(got["memobrick logo dark.png"], biz + "A Brand & Identity/Logos & Graphics")
         self.assertEqual(plan["images_analyzed"], 4)
         self.assertEqual(plan["image_types"]["Logos & Graphics"], 1)
 

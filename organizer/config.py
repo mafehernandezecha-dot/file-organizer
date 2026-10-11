@@ -6,7 +6,7 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 DEFAULT_STATE_DIR = Path.home() / ".file-organizer"
 
@@ -85,12 +85,30 @@ class Config:
     label_file_pattern: str = ""
     screenshots_folder: Path = Path.home() / "Pictures" / "Screenshots"
     business_root: Path = Path.home() / "Documents" / "01 MEMOBRICK BUSINESS"
+    # Unless set, these live next to the business folder (normally ~/Documents).
+    personal_root_override: Optional[Path] = None
+    intake_root_override: Optional[Path] = None
+    loose_file_folders_override: Optional[List[Path]] = None
     intake_folders: List[Path] = field(
         default_factory=lambda: [Path.home() / "Downloads", Path.home() / "Desktop"]
     )
     business_keywords: List[str] = field(
         default_factory=lambda: ["memobrick", "mosaic", "brick", "baseplate", "shopify"]
     )
+
+    @property
+    def personal_root(self) -> Path:
+        return self.personal_root_override or self.business_root.parent / "02 PERSONAL DOCUMENTS"
+
+    @property
+    def intake_root(self) -> Path:
+        return self.intake_root_override or self.business_root.parent / "05 INTAKE"
+
+    @property
+    def loose_file_folders(self) -> List[Path]:
+        if self.loose_file_folders_override is not None:
+            return self.loose_file_folders_override
+        return [self.business_root.parent]
 
     @property
     def db_path(self) -> Path:
@@ -122,6 +140,11 @@ def load_config(path: Path) -> Config:
     cfg.label_file_pattern = str(data.get("label_file_pattern", ""))
     if "business_root" in data:
         cfg.business_root = _expand(data["business_root"])
+    for key in ("personal_root", "intake_root"):
+        if key in data:
+            setattr(cfg, f"{key}_override", _expand(data[key]))
+    if "loose_file_folders" in data:
+        cfg.loose_file_folders_override = [_expand(p) for p in data["loose_file_folders"]]
     if "intake_folders" in data:
         cfg.intake_folders = [_expand(p) for p in data["intake_folders"]]
     else:

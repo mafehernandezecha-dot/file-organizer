@@ -17,6 +17,7 @@ from organizer.analysis import human
 from organizer.classify import HIGH, Decision, classify_file, classify_folder, peek_text
 from organizer.config import Config
 from organizer.moves import unique_destinations
+from organizer.personal import INTAKE, PERSONAL, classify_personal, intake_file, intake_folder
 from organizer.vision import decide_from_vision, is_generic
 from organizer.report import CSS, date, short
 
@@ -49,18 +50,35 @@ def image_candidates(conn: sqlite3.Connection, scan_id: int, cfg: Config) -> Lis
     return out
 
 
+def _roots(cfg: Config) -> Dict[str, Path]:
+    return {PERSONAL: cfg.personal_root, INTAKE: cfg.intake_root}
+
+
+def resolve_dest(dest: str, cfg: Config) -> Tuple[Path, str]:
+    """('@personal/Medical Records' | 'A Brand & Identity/Logos …') -> (folder, label)."""
+    for prefix, root in _roots(cfg).items():
+        if dest.startswith(prefix):
+            sub = dest[len(prefix):]
+            return root / sub, f"{root.name}/{sub}"
+    return cfg.business_root / dest, f"{cfg.business_root.name}/{dest}"
+
+
 def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
                     scan_finished: float, vision: Optional[Dict[str, Dict]] = None) -> Dict:
-    business_root = cfg.business_root
     vision = vision or {}
     seen_types: Counter = Counter()
     moves: List[Tuple[Dict, str]] = []
     review: List[Dict] = []
-    for intake in cfg.intake_folders:
-        root = str(intake)
+    sources = [(p, True) for p in cfg.intake_folders] + \
+              [(p, False) for p in cfg.loose_file_folders if p not in cfg.intake_folders]
+    for folder, whole in sources:
+        root = str(folder)
         rows = conn.execute("SELECT * FROM files WHERE scan_id=? AND root=?",
                             (scan_id, root)).fetchall()
         files, folders = _units(rows, root)
+        if not whole:
+            folders = {}  # e.g. Documents: only loose top-level files, never your folders
+            files = [r for r in files if r["item_type"] == "file"]
 
         for r in files:
             base = {"path": r["path"], "size": r["size"], "mtime": r["mtime"],
@@ -76,21 +94,28 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
             if r["item_type"] == "project":
                 d = classify_folder(r["name"], Counter(), True, bool(r["business"]), r["mtime"],
                                     cfg.loose_photos_are_business)
-                unit = "folder"
+                _place(d, {**base, "unit": "folder"}, cfg, moves, review)
+                continue
+            text = ""
+            if r["ext"] in PEEK_EXTS and not r["dataless"]:
+                text = peek_text(r["path"], r["ext"], r["size"])
+            d = classify_file(r, text, cfg.loose_photos_are_business)
+            personal = None
+            if is_generic(d.dest) and not r["business"]:
+                personal = classify_personal(r, text)
+            if personal:
+                d = personal
             else:
-                text = ""
-                if r["ext"] in PEEK_EXTS and not r["dataless"]:
-                    text = peek_text(r["path"], r["ext"], r["size"])
-                d = classify_file(r, text, cfg.loose_photos_are_business)
-                unit = "file"
                 v = vision.get(r["path"])
                 may_rescue = cfg.loose_photos_are_business or r["business"]
                 if v and is_generic(d.dest) and (d.dest or may_rescue):
                     vd = decide_from_vision(v)
                     if vd is not None:
-                        d = vd
-                        seen_types[vd.dest.split("/")[-1] if vd.dest else "Needs a look"] += 1
-            _place(d, {**base, "unit": unit}, business_root, moves, review)
+                        seen_types[vd.dest.split("/")[-1] if vd.dest else "Photos of documents"] += 1
+                        d = vd if vd.dest else Decision(f"{INTAKE}Photos of Documents", 0.6, vd.reason)
+            if not d.dest:
+                d = intake_file(r, business_hint=bool(r["business"]))
+            _place(d, {**base, "unit": "file"}, cfg, moves, review)
 
         for name, children in folders.items():
             path = os.path.join(root, name)
@@ -104,11 +129,13 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
             if any(c["sensitive"] for c in children):
                 review.append({**base, "reason": "contains private-looking files — never touched"})
                 continue
+            business = any(c["business"] for c in children)
             d = classify_folder(name, Counter(c["kind"] for c in children),
                                 any(c["item_type"] == "project" for c in children),
-                                any(c["business"] for c in children), st.st_mtime,
-                                cfg.loose_photos_are_business)
-            _place(d, base, business_root, moves, review)
+                                business, st.st_mtime, cfg.loose_photos_are_business)
+            if not d.dest and not d.reason.startswith("software folder"):
+                d = intake_folder(business)
+            _place(d, base, cfg, moves, review)
 
     pairs = unique_destinations([(m["path"], dest) for m, dest in moves])
     items = []
@@ -117,8 +144,8 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
     return {
         "version": 1,
         "action": "move",
-        "reason": "Memobrick files",
-        "dest_root": str(business_root),
+        "reason": "files from Downloads, Desktop and Documents",
+        "dest_root": str(cfg.business_root.parent),
         "created_at": time.time(),
         "scan_finished_at": scan_finished,
         "items": items,
@@ -128,13 +155,13 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
     }
 
 
-def _place(d: Decision, item: Dict, business_root: Path, moves, review) -> None:
+def _place(d: Decision, item: Dict, cfg: Config, moves, review) -> None:
     if not d.dest:
         review.append({**item, "reason": d.reason})
         return
-    item = {**item, "confidence": round(d.confidence, 2), "why": d.reason,
-            "section": d.dest}
-    moves.append((item, str(business_root / d.dest / os.path.basename(item["path"]))))
+    folder, label = resolve_dest(d.dest, cfg)
+    item = {**item, "confidence": round(d.confidence, 2), "why": d.reason, "section": label}
+    moves.append((item, str(folder / os.path.basename(item["path"]))))
 
 
 def render_sort_preview(plan: Dict, plan_path: Path) -> str:
@@ -181,8 +208,8 @@ def render_sort_preview(plan: Dict, plan_path: Path) -> str:
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>Preview: Memobrick Files</title><style>{CSS}</style></head><body><main>"
-        "<h1>Preview: file Memobrick items</h1>"
+        f"<title>Preview: Organize Files</title><style>{CSS}</style></head><body><main>"
+        "<h1>Preview: organize Downloads, Desktop & Documents</h1>"
         f"<p class=sub>Into {e(short(plan['dest_root']))} · based on the scan from "
         f"{e(date(plan['scan_finished_at']))}</p>"
         "<div class=safe><b>Nothing has happened yet.</b> Files move only after you approve. "

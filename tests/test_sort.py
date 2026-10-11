@@ -137,6 +137,7 @@ class SortPlanTest(unittest.TestCase):
         plan = build_sort_plan(self.conn, self.scan_id, self.cfg, 0)
         got = {os.path.basename(i["path"]): os.path.relpath(i["dest"], self.cfg.business_root)
                for i in plan["items"]}
+        docs = self.cfg.business_root.parent
         self.assertEqual(got["S-6SUKU6NGJR-photo.jpg"],
                          "G Customers & Orders/Customer Photos/S-6SUKU6NGJR/S-6SUKU6NGJR-photo.jpg")
         self.assertEqual(got["memobrick logo.png"], "A Brand & Identity/Logos & Graphics/memobrick logo.png")
@@ -148,9 +149,12 @@ class SortPlanTest(unittest.TestCase):
         self.assertTrue(got["Holiday shoot"].startswith("F Creative Assets/Photos/"))
         self.assertEqual(got["memobrick-editor"],
                          "C Website & Technology/Editor & Studio Builds/memobrick-editor")
+        dests = {os.path.basename(i["path"]): i["dest"] for i in plan["items"]}
+        self.assertEqual(dests["Installer.dmg"], str(docs / "05 INTAKE/Installers/Installer.dmg"))
+        self.assertEqual(dests["notes.txt"], str(docs / "05 INTAKE/Documents to Review/notes.txt"))
+        self.assertEqual(dests["misc stuff"], str(docs / "05 INTAKE/Folders to Review/misc stuff"))
         staying = {os.path.basename(r["path"]): r["reason"] for r in plan["review"]}
-        for name in ["Installer.dmg", "notes.txt", "bank passwords.pdf", "misc stuff"]:
-            self.assertIn(name, staying)
+        self.assertEqual(list(staying), ["bank passwords.pdf"])
         self.assertIn("private", staying["bank passwords.pdf"])
         html = render_sort_preview(plan, Path("p.json"))
         self.assertIn("Nothing has happened yet", html)
@@ -166,9 +170,10 @@ class SortPlanTest(unittest.TestCase):
         self.assertTrue((editor / "src/app.js").exists(), "project folder not moved whole")
         for p in self.files.values():
             self.assertFalse(p.exists())
+        self.assertTrue(self.stay[2].exists(), "private file was moved")
+        moves.undo_moves(journal, say=lambda m: None)
         for p in self.stay:
             self.assertTrue(p.exists())
-        moves.undo_moves(journal, say=lambda m: None)
         for p in self.files.values():
             self.assertTrue(p.exists())
         self.assertTrue((self.home / "Downloads/memobrick-editor/src/app.js").exists())
@@ -203,3 +208,55 @@ class SortPlanTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PersonalAndIntakeTest(unittest.TestCase):
+    def test_personal_rules(self):
+        from organizer.personal import classify_personal
+        cases = {
+            "Passport scan.pdf": "Identification & Official Documents",
+            "USCIS I-797 approval.pdf": "Immigration & Visas",
+            "boarding pass TLV.pdf": "Travel Documents",
+            "Lab results March.pdf": "Medical Records",
+            "Bank statement Sept.pdf": "Banking & Finances",
+            "W-2 2025.pdf": "Banking & Finances",
+            "Lease agreement.docx": "Home & Household",
+            "Ulpan homework 3.docx": "Education & Hebrew Studies",
+            "עברית שיעור.pdf": "Education & Hebrew Studies",
+            "Car insurance policy.pdf": "Insurance",
+            "Warranty TV.pdf": "Receipts & Warranties",
+            "Resume 2026.docx": "Personal Projects",
+            "passport.jpg": "Identification & Official Documents",
+        }
+        for name, want in cases.items():
+            with self.subTest(name=name):
+                d = classify_personal(row(name), "")
+                self.assertIsNotNone(d)
+                self.assertEqual(d.dest, "@personal/" + want)
+        for name in ["esta es mi foto.png", "notes.txt", "united.pdf", "class.pdf", "random.pdf"]:
+            with self.subTest(name=name):
+                self.assertIsNone(classify_personal(row(name), ""))
+        d = classify_personal(row("scan0003.pdf"), "receipt notice uscis case number")
+        self.assertEqual(d.dest, "@personal/Immigration & Visas")
+
+    def test_plan_with_personal_documents_and_loose_documents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            home = Path(tmp)
+            dl, docs = home / "Downloads", home / "Documents"
+            write(dl / "Passport scan.pdf", b"p")
+            write(dl / "mystery.bin", b"m")
+            write(docs / "Bank statement Sept.pdf", b"b")
+            write(docs / "My Folder/keep me here.pdf", b"k")       # existing folder: untouched
+            write(docs / "01 MEMOBRICK BUSINESS/A Brand & Identity/x.png", b"x")
+            cfg = Config(roots=[dl, docs], state_dir=home / "state", loose_photos_are_business=True)
+            cfg.business_root = docs / "01 MEMOBRICK BUSINESS"
+            cfg.intake_folders = [dl]
+            conn = connect(cfg.db_path)
+            scan_id = scan(conn, cfg)
+            plan = build_sort_plan(conn, scan_id, cfg, 0)
+            dests = {os.path.basename(i["path"]): os.path.relpath(i["dest"], docs) for i in plan["items"]}
+            self.assertEqual(dests, {
+                "Passport scan.pdf": "02 PERSONAL DOCUMENTS/Identification & Official Documents/Passport scan.pdf",
+                "mystery.bin": "05 INTAKE/Needs Manual Review/mystery.bin",
+                "Bank statement Sept.pdf": "02 PERSONAL DOCUMENTS/Banking & Finances/Bank statement Sept.pdf",
+            })

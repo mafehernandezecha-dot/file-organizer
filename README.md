@@ -80,6 +80,20 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## Filing everything from Downloads, Desktop and Documents
+
+`sort` now finds a home for every item, not just Memobrick files:
+
+| Item | Goes to |
+|---|---|
+| Memobrick files | `Documents/01 MEMOBRICK BUSINESS/<A–I section>` |
+| Personal documents (passport, visas, travel, medical, bank/tax, lease, insurance, Hebrew studies, warranties, CV…) | `Documents/02 PERSONAL DOCUMENTS/<section>` — recognized by name or text read on this Mac only |
+| Everything else | `Documents/05 INTAKE/` → Documents to Review, Photos, Videos, Audio, Compressed Files, Installers, Memobrick to Sort, Folders to Review, Needs Manual Review |
+
+Loose files directly inside Documents are included; your existing folders in
+Documents are never touched. Private-looking files, apps, and non-Memobrick
+code folders always stay where they are.
+
 ## Filing Memobrick items from Downloads and Desktop
 
 ```bash
@@ -261,6 +275,8 @@ folder structure."* Claude reads the report locally on your Mac.
 | `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
 | `label_file_pattern` | Regex searched in file names to spot shipping labels | see `organizer/plans.py` |
 | `business_root` | Where Memobrick items are filed | `~/Documents/01 MEMOBRICK BUSINESS` |
+| `personal_root` / `intake_root` | Where personal documents / unsorted items go | `~/Documents/02 PERSONAL DOCUMENTS`, `~/Documents/05 INTAKE` |
+| `loose_file_folders` | Folders whose loose top-level files are sorted too | `~/Documents` |
 | `intake_folders` | Folders `sort` files from | `~/Downloads`, `~/Desktop` |
 | `screenshots_folder` | Where screenshots are gathered | `~/Pictures/Screenshots` |
 | `order_file_pattern` | Regex for order-file names (first group = order number) | `^#?(\d{5,6})[ _\-]` |

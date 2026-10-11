@@ -59,7 +59,7 @@ def build_cleanup_plan(conn, scan_id: int, cfg: Config, scan_finished: float,
         fam = family_of(r, cfg)
         if fam:
             families[fam].append((r, fam))
-        elif any(_under(r["path"], i) for i in cfg.intake_folders):
+        elif any(_under(r["path"], i) for i in [*cfg.intake_folders, cfg.intake_root]):
             why = "installer" if r["kind"] == "installer" else "compressed archive"
             trash_rows.append((r, why))
 
