@@ -79,7 +79,21 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
-## Clearing out customer order files
+## Clearing out shipping labels or order files
+
+Same three steps for both; only the preview command differs:
+
+| Clean up | Preview command | Recognized by name |
+|---|---|---|
+| Shipping labels | `python3 -m organizer labels --open` | "shipping label", "USPS", "FedEx", "UPS label", "postage", Pirate Ship / Shippo / ShipStation / EasyPost |
+| Order files | `python3 -m organizer orders --open` | starts with a 5–6 digit order number |
+
+Labels saved under generic names (e.g. `Safari.pdf`) aren't caught by name;
+Phase 3 will read PDF contents to find those. Files inside WhatsApp or other
+apps are never touched; clear those in the app (WhatsApp: Settings → Storage
+and Data → Manage Storage).
+
+### Order files
 
 Order files are recognized by names that start with a 5–6 digit order number
 (`21074 Riley Sherman 16x16.pdf`, `#21100_proof.png`). Years like
@@ -142,6 +156,7 @@ folder structure."* Claude reads the report locally on your Mac.
 | `stale_days` | "Not touched recently" threshold | `365` |
 | `hash_duplicates` | Check exact duplicates | `true` |
 | `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files count as Memobrick assets (screenshots never do) | `false` (example config: `true`) |
+| `label_file_pattern` | Regex searched in file names to spot shipping labels | see `organizer/plans.py` |
 | `order_file_pattern` | Regex for order-file names (first group = order number) | `^#?(\d{5,6})[ _\-]` |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |
 | `state_dir` | Where index + reports live | `~/.file-organizer` |

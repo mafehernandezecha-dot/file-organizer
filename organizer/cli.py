@@ -9,6 +9,7 @@ reverses it.
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import time
@@ -20,11 +21,12 @@ from organizer.config import load_config
 from organizer.duplicates import find_duplicates
 from organizer.index import connect, latest_scan_id
 from organizer.plans import (
-    DEFAULT_ORDER_PATTERN, build_trash_plan, find_order_files, load_plan, parse_skip,
+    DEFAULT_LABEL_PATTERN, DEFAULT_ORDER_PATTERN, build_trash_plan, find_label_files,
+    find_order_files, load_plan, order_number, parse_skip,
     render_trash_preview, save_plan, write_preview,
 )
 from organizer import trash
-from organizer.report import write_reports
+from organizer.report import short, write_reports
 from organizer.scanner import scan
 
 
@@ -74,21 +76,21 @@ def cmd_report(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_orders(args: argparse.Namespace) -> int:
+def _trash_preview(args, title, slug, group_label, find, group_of, none_msg) -> int:
     cfg = load_config(args.config)
     conn = connect(cfg.db_path)
     scan_id = latest_scan_id(conn)
     scan_row = conn.execute("SELECT finished_at FROM scans WHERE id=?", (scan_id,)).fetchone()
-    pattern = cfg.order_file_pattern or DEFAULT_ORDER_PATTERN
-    rows = find_order_files(conn, scan_id, pattern)
+    rows = find(conn, scan_id, cfg)
     if not rows:
-        _say("No order files found (names starting with a 5–6 digit order number).")
+        _say(none_msg)
         return 0
-    plan = build_trash_plan(rows, "customer order files", scan_row["finished_at"])
-    plan_path = save_plan(plan, cfg.state_dir / "plans", "trash-orders")
-    preview = write_preview(render_trash_preview(plan, plan_path, pattern),
-                            cfg.reports_dir, plan_path)
-    _say(f"Found {len(rows):,} order file(s), {human(sum(r['size'] for r in rows))}.")
+    plan = build_trash_plan(rows, title, scan_row["finished_at"])
+    plan_path = save_plan(plan, cfg.state_dir / "plans", slug)
+    preview = write_preview(
+        render_trash_preview(plan, plan_path, title, group_label, group_of),
+        cfg.reports_dir, plan_path)
+    _say(f"Found {len(rows):,} {title}, {human(sum(r['size'] for r in rows))}.")
     _say("Nothing has been moved. Review the preview:")
     _say(f"  {preview}")
     _say("When it looks right, approve with:")
@@ -96,6 +98,24 @@ def cmd_orders(args: argparse.Namespace) -> int:
     if args.open and sys.platform == "darwin":
         subprocess.run(["open", str(preview)], check=False)
     return 0
+
+
+def cmd_orders(args: argparse.Namespace) -> int:
+    pattern = load_config(args.config).order_file_pattern or DEFAULT_ORDER_PATTERN
+    return _trash_preview(
+        args, "order files", "trash-orders", "Order",
+        lambda conn, scan_id, cfg: find_order_files(conn, scan_id, pattern),
+        lambda path: order_number(os.path.basename(path), pattern),
+        "No order files found (names starting with a 5–6 digit order number).")
+
+
+def cmd_labels(args: argparse.Namespace) -> int:
+    return _trash_preview(
+        args, "shipping labels", "trash-labels", "Folder",
+        lambda conn, scan_id, cfg: find_label_files(
+            conn, scan_id, cfg.label_file_pattern or DEFAULT_LABEL_PATTERN),
+        lambda path: short(os.path.dirname(path)),
+        "No shipping labels found by name (shipping label, USPS, FedEx, postage …).")
 
 
 def _confirm_backup(ask) -> bool:
@@ -178,6 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
     o.add_argument("--config", type=Path, default=Path("config.json"))
     o.add_argument("--open", action="store_true")
     o.set_defaults(func=cmd_orders)
+
+    lb = sub.add_parser("labels", help="Preview shipping labels to move to Trash")
+    lb.add_argument("--config", type=Path, default=Path("config.json"))
+    lb.add_argument("--open", action="store_true")
+    lb.set_defaults(func=cmd_labels)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan (moves to Trash)")
     ap.add_argument("plan", type=Path)

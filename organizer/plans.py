@@ -15,7 +15,7 @@ import sqlite3
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from organizer.analysis import human
 from organizer.report import CSS, date, short
@@ -25,17 +25,41 @@ from organizer.report import CSS, date, short
 # 4-digit numbers are excluded so years ("2024 Taxes.pdf") never match.
 DEFAULT_ORDER_PATTERN = r"^#?(\d{5,6})[ _\-]"
 
+# Shipping labels by name: "shipping_labels_thermal.pdf", "USPS label 123.pdf",
+# "FedEx_….pdf", "postage…", Pirate Ship / Shippo / ShipStation / EasyPost
+# exports. A bare "ups" is not enough (too many false hits); "UPS label" is.
+DEFAULT_LABEL_PATTERN = (
+    r"(?<![a-z])(shipping[\s_\-]*labels?|labels?[\s_\-]*(usps|ups|fedex|dhl)"
+    r"|(usps|ups|fedex|dhl)[\s_\-]*labels?|usps|fedex|postage|pirate[\s_\-]*ship"
+    r"|shippo|shipstation|easypost)(?![a-z])"
+)
+LABEL_KINDS = ("pdf", "image", "other")  # .zpl/.epl label files are "other"
 
-def find_order_files(
-    conn: sqlite3.Connection, scan_id: int, pattern: str = DEFAULT_ORDER_PATTERN
+
+def find_matching_files(
+    conn: sqlite3.Connection, scan_id: int, pattern: str, kinds: Optional[Tuple[str, ...]] = None,
+    search: bool = False,
 ) -> List[sqlite3.Row]:
-    rx = re.compile(pattern)
+    rx = re.compile(pattern, re.I if search else 0)
     rows = conn.execute(
         """SELECT * FROM files WHERE scan_id=? AND item_type='file' AND sensitive=0
            ORDER BY name""",
         (scan_id,),
     ).fetchall()
-    return [r for r in rows if rx.match(r["name"])]
+    match = rx.search if search else rx.match
+    return [r for r in rows if match(r["name"]) and (kinds is None or r["kind"] in kinds)]
+
+
+def find_order_files(
+    conn: sqlite3.Connection, scan_id: int, pattern: str = DEFAULT_ORDER_PATTERN
+) -> List[sqlite3.Row]:
+    return find_matching_files(conn, scan_id, pattern)
+
+
+def find_label_files(
+    conn: sqlite3.Connection, scan_id: int, pattern: str = DEFAULT_LABEL_PATTERN
+) -> List[sqlite3.Row]:
+    return find_matching_files(conn, scan_id, pattern, LABEL_KINDS, search=True)
 
 
 def order_number(name: str, pattern: str = DEFAULT_ORDER_PATTERN) -> str:
@@ -75,13 +99,17 @@ def load_plan(path: Path) -> Dict:
     return plan
 
 
-def render_trash_preview(plan: Dict, plan_path: Path, pattern: str) -> str:
+def render_trash_preview(
+    plan: Dict, plan_path: Path, title: str, group_label: str,
+    group_of: Callable[[str], str],
+) -> str:
+    """title e.g. "order files"; group_label e.g. "Order"; group_of(path) -> group key."""
     e = html.escape
     items = plan["items"]
     total = sum(i["size"] for i in items)
     groups: Dict[str, List[Dict]] = defaultdict(list)
     for it in items:
-        groups[order_number(os.path.basename(it["path"]), pattern) or "?"].append(it)
+        groups[group_of(it["path"]) or "?"].append(it)
     by_folder: Dict[str, int] = defaultdict(int)
     for it in items:
         by_folder[short(os.path.dirname(it["path"]))] += 1
@@ -106,25 +134,25 @@ def render_trash_preview(plan: Dict, plan_path: Path, pattern: str) -> str:
     return (
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>Preview: Order Files</title><style>{CSS}</style></head><body><main>"
-        "<h1>Preview: move order files to Trash</h1>"
+        f"<title>Preview: {e(title.title())}</title><style>{CSS}</style></head><body><main>"
+        f"<h1>Preview: move {e(title)} to Trash</h1>"
         f"<p class=sub>Based on the scan from {e(date(plan['scan_finished_at']))}</p>"
         "<div class=safe><b>Nothing has happened yet.</b> This is only a list. "
         "Files go to the Trash only after you approve, and can be restored with "
         "Finder's “Put Back” or the <code>undo</code> command.</div>"
         "<div class=tiles>"
         f"<div class=tile><b>{len(items):,}</b><span>files</span></div>"
-        f"<div class=tile><b>{len(groups):,}</b><span>orders</span></div>"
+        f"<div class=tile><b>{len(groups):,}</b><span>{e(group_label.lower())} groups</span></div>"
         f"<div class=tile><b>{e(human(total))}</b><span>total size</span></div>"
         "</div>"
         "<h2>Where they are</h2><ul class=obs>" + where + "</ul>"
         "<h2>How to review</h2><ul class=obs>"
-        "<li>Check the list for anything that is <b>not</b> an order file.</li>"
+        f"<li>Check the list for anything that is <b>not</b> one of the {e(title)}.</li>"
         "<li>To keep some, note their numbers (#) and add "
         "<code>--skip 3,17,42</code> when approving.</li>"
         f"<li>Approve with: <code>python3 -m organizer apply {e(str(plan_path))}</code></li>"
         "</ul>"
-        "<h2>Files</h2><div class=wrap><table><thead><tr><th>#</th><th>Order</th>"
+        f"<h2>Files</h2><div class=wrap><table><thead><tr><th>#</th><th>{e(group_label)}</th>"
         "<th>File</th><th>Folder</th><th>Size</th><th>Modified</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table></div></main></body></html>"
     )

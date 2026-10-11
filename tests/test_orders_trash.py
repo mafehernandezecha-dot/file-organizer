@@ -88,7 +88,7 @@ class OrdersTest(unittest.TestCase):
 
     def test_plan_and_preview_change_nothing(self):
         plan, path = self.make_plan()
-        html = render_trash_preview(plan, path, r"^#?(\d{5,6})[ _\-]")
+        html = render_trash_preview(plan, path, "order files", "Order", lambda p: "21074")
         self.assertIn("Nothing has happened yet", html)
         self.assertIn("21074", html)
         for p in self.orders + self.keep:
@@ -178,3 +178,39 @@ class OrdersTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LabelsTest(unittest.TestCase):
+    def test_label_detection(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "Downloads"
+            labels = ["shipping_labels_thermal.pdf", "Shipping Label 21074.pdf", "USPS_label.pdf",
+                      "fedex-ground.pdf", "UPS label 3.png", "label_ups.pdf", "Postage receipt.pdf",
+                      "PirateShip-labels.pdf", "order.zpl", "shippo_2026-10-01.pdf"]
+            others = ["backups.pdf", "groups.pdf", "Label design.ai", "labels sheet.docx",
+                      "Test results.pdf", "S-6SUKU6NGJR-photo.jpg", "ups and downs.pdf"]
+            for n in labels + others:
+                write(d / n, b"x")
+            cfg = Config(roots=[d], state_dir=Path(tmp) / "state")
+            conn = connect(cfg.db_path)
+            scan_id = scan(conn, cfg)
+            from organizer.plans import find_label_files
+            got = {r["name"] for r in find_label_files(conn, scan_id)}
+            # order.zpl has no label word in its name, so name-only matching skips it.
+            self.assertEqual(got, set(labels) - {"order.zpl"})
+
+    def test_cli_labels_preview(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "Downloads"
+            f = write(d / "shipping_labels_thermal.pdf", b"x" * 10)
+            state = Path(tmp) / "state"
+            cfg_path = Path(tmp) / "config.json"
+            cfg_path.write_text(json.dumps({"approved_folders": [str(d)], "state_dir": str(state)}))
+            self.assertEqual(cli.main(["audit", "--config", str(cfg_path), "--no-hash"]), 0)
+            self.assertEqual(cli.main(["labels", "--config", str(cfg_path)]), 0)
+            preview = next((state / "reports").glob("preview_trash-labels_*.html")).read_text()
+            self.assertIn("Preview: move shipping labels to Trash", preview)
+            self.assertIn("shipping_labels_thermal.pdf", preview)
+            self.assertTrue(f.exists())
+            plan = load_plan(next((state / "plans").glob("trash-labels_*.json")))
+            self.assertEqual(plan["reason"], "shipping labels")
