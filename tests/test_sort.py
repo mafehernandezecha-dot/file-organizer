@@ -49,7 +49,7 @@ class ClassifyTest(unittest.TestCase):
             "orders_export_1.csv": "G Customers & Orders/Order Exports",
             "products_export.csv": "C Website & Technology/Shopify Exports",
             "memobrick-size-zoom-test-latest (2).zip": "C Website & Technology/Editor & Studio Builds",
-            "Memobrick_Logo_white.png": "A Brand & Identity/Logos",
+            "Memobrick_Logo_white.png": "A Brand & Identity/Logos & Graphics",
             "Montserrat-Bold.ttf": "A Brand & Identity/Fonts",
             "Invoice-0042.pdf": "I Finance & Legal/Invoices & Receipts",
             "packing slip 21074.pdf": "H Operations/Shipping",
@@ -139,7 +139,7 @@ class SortPlanTest(unittest.TestCase):
                for i in plan["items"]}
         self.assertEqual(got["S-6SUKU6NGJR-photo.jpg"],
                          "G Customers & Orders/Customer Photos/S-6SUKU6NGJR/S-6SUKU6NGJR-photo.jpg")
-        self.assertEqual(got["memobrick logo.png"], "A Brand & Identity/Logos/memobrick logo.png")
+        self.assertEqual(got["memobrick logo.png"], "A Brand & Identity/Logos & Graphics/memobrick logo.png")
         self.assertEqual(got["Test results.pdf"],
                          "B Product Development/Assembly Instructions/Test results.pdf")
         self.assertEqual(got["document (3).docx"],
@@ -198,7 +198,7 @@ class SortPlanTest(unittest.TestCase):
         args = cli.build_parser().parse_args(["apply", str(plan_path), "--config", str(cfg_path)])
         with mock.patch.object(trash, "latest_backup_age_hours", return_value=1.0):
             self.assertEqual(cli.cmd_apply(args, ask=lambda q: "move"), 0)
-        self.assertTrue((self.cfg.business_root / "A Brand & Identity/Logos/memobrick logo.png").exists())
+        self.assertTrue((self.cfg.business_root / "A Brand & Identity/Logos & Graphics/memobrick logo.png").exists())
 
 
 if __name__ == "__main__":

@@ -158,7 +158,7 @@ def classify_file(row, text: str, loose_photos_are_business: bool) -> Decision:
     if kind == "font":
         return Decision(f"{A}/Fonts", 0.85, "font file")
     if w := _has(n, "logo", "logos", "logotipo", "isotipo"):
-        return Decision(f"{A}/Logos", 0.9, f"'{w}' in the name")
+        return Decision(f"{A}/Logos & Graphics", 0.9, f"'{w}' in the name")
     if w := _has(n, r"brand[\s_\-]*(guide|guidelines|book|kit)", r"style[\s_\-]*guide"):
         return Decision(f"{A}/Brand Guidelines", 0.9, "brand guidelines")
 
@@ -245,7 +245,7 @@ def classify_folder(name: str, child_kinds: Counter, is_project: bool, business:
     if _has(n, *AI_TOOLS):
         return Decision(f"{F}/AI-Generated", 0.8, "AI image folder")
     if _has(n, "logo", "logos", "brand"):
-        return Decision(f"{A}/Logos", 0.8, "logo/brand folder")
+        return Decision(f"{A}/Logos & Graphics", 0.8, "logo/brand folder")
     if _has(n, "ads?", "campaign", "creatives?", "promo"):
         return Decision(f"{F}/Ad Creatives", 0.8, "ad creatives folder")
     if media / total >= 0.8 and (business or loose_photos_are_business):
