@@ -10,5 +10,6 @@
   "stale_days": 365,
   "large_file_mb": 500,
   "hash_duplicates": true,
+  "loose_photos_are_business": true,
   "business_keywords": ["memobrick", "mosaic", "brick", "baseplate", "shopify"]
 }

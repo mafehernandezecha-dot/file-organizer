@@ -143,6 +143,23 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(main(["audit", "--config", str(cfg_path)]), 2)
 
 
+class LoosePhotosTest(unittest.TestCase):
+    def test_loose_photos_count_as_business_but_screenshots_do_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp) / "Downloads"
+            write(d / "IMG_1234.jpg", b"p")
+            write(d / "Screenshot 2026-10-01 at 10.00.png", b"s")
+            write(d / "notes.pdf", b"n")
+            for flag, expected in ((False, set()), (True, {"IMG_1234.jpg"})):
+                cfg = Config(roots=[d], state_dir=Path(tmp) / f"state{flag}",
+                             loose_photos_are_business=flag)
+                conn = connect(cfg.db_path)
+                scan_id = scan(conn, cfg)
+                got = {r["name"] for r in conn.execute(
+                    "SELECT name FROM files WHERE scan_id=? AND business=1", (scan_id,))}
+                self.assertEqual(got, expected)
+
+
 class KindsTest(unittest.TestCase):
     def test_base_name_groups_versions_not_years(self):
         self.assertEqual(base_name("Proposal_FINAL2.pdf"), base_name("Proposal v3 (1).pdf"))

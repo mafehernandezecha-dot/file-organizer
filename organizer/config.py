@@ -77,6 +77,9 @@ class Config:
     stale_days: int = 365
     large_file_mb: int = 500
     hash_duplicates: bool = True
+    # Personal photos live in Apple Photos; loose photo files are Memobrick
+    # assets. When true, loose images (not screenshots) count as business.
+    loose_photos_are_business: bool = False
     business_keywords: List[str] = field(
         default_factory=lambda: ["memobrick", "mosaic", "brick", "baseplate", "shopify"]
     )
@@ -106,6 +109,7 @@ def load_config(path: Path) -> Config:
     cfg.stale_days = int(data.get("stale_days", cfg.stale_days))
     cfg.large_file_mb = int(data.get("large_file_mb", cfg.large_file_mb))
     cfg.hash_duplicates = bool(data.get("hash_duplicates", True))
+    cfg.loose_photos_are_business = bool(data.get("loose_photos_are_business", False))
     if "business_keywords" in data:
         cfg.business_keywords = [k.lower() for k in data["business_keywords"]]
     return cfg

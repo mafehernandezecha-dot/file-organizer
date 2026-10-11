@@ -162,7 +162,11 @@ def _observations(rows: List[sqlite3.Row], a: Audit) -> List[str]:
                    and os.path.basename(r["root"]).lower() not in media_homes
                    and not r["business"] and r["item_type"] == "file"]
     if stray_media:
-        obs.append(f"{len(stray_media)} photo/video file(s) live outside Pictures and Movies.")
+        obs.append(f"{len(stray_media)} photo/video file(s) live outside Pictures and Movies "
+                   f"and are not recognized as Memobrick.")
+    if a.packages and any(r["name"].endswith(".photoslibrary") for r in a.packages):
+        obs.append("An Apple Photos library was found; it is kept intact and never "
+                   "reorganized — manage personal photos inside the Photos app.")
 
     biz_roots = [root for root, c in a.business_by_root.items() if sum(c.values())]
     if len(biz_roots) > 1:

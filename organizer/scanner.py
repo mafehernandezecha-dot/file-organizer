@@ -27,7 +27,7 @@ from organizer.config import (
     Config,
     is_sensitive_name,
 )
-from organizer.kinds import base_name, kind_for
+from organizer.kinds import base_name, is_screenshot, kind_for
 
 Progress = Optional[Callable[[int], None]]
 
@@ -134,6 +134,11 @@ def scan(conn: sqlite3.Connection, cfg: Config, progress: Progress = None) -> in
             elif item_type == "symlink":
                 size = 0
             rel = os.path.relpath(path, root).lower()
+            kind = "project" if item_type == "project" else kind_for(name)
+            business = any(k in rel for k in keywords) or (
+                cfg.loose_photos_are_business and item_type == "file"
+                and kind == "image" and not is_screenshot(name)
+            )
             conn.execute(
                 """INSERT OR IGNORE INTO files
                    (scan_id, root, path, name, ext, kind, size, mtime, atime, birthtime,
@@ -141,10 +146,10 @@ def scan(conn: sqlite3.Connection, cfg: Config, progress: Progress = None) -> in
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     scan_id, str(root), path, name, Path(name).suffix.lower(),
-                    "project" if item_type == "project" else kind_for(name),
+                    kind,
                     size, st.st_mtime, st.st_atime, getattr(st, "st_birthtime", None),
                     st.st_dev, st.st_ino, item_type, int(is_sensitive_name(name)), int(is_dataless(st)),
-                    int(any(k in rel for k in keywords)), base_name(name),
+                    int(business), base_name(name),
                 ),
             )
             count += 1

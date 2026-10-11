@@ -83,6 +83,18 @@ Open Claude Code in the `file-organizer` folder and say something like:
 *"Read the latest report in ~/.file-organizer/reports and propose the master
 folder structure."* Claude reads the report locally on your Mac.
 
+## Your setup
+
+- **Personal photos:** Apple Photos. The library is one sealed item — never
+  opened, moved, or reorganized. Personal photo organizing (albums, people,
+  trips) stays in the Photos app.
+- **Loose photo files:** Memobrick assets only → destined for
+  `01 MEMOBRICK BUSINESS / F. Creative Assets`.
+- **Backup:** Time Machine. Before Phase 5 moves anything, the agent will check
+  `tmutil latestbackup` and refuse to run if the latest backup is older than
+  24 hours or the backup disk is unavailable. To check yourself: menu bar
+  Time Machine icon → "Latest backup", or run `tmutil latestbackup` in Terminal.
+
 ## Configuration (`config.json`)
 
 | Key | Meaning | Default |
@@ -91,6 +103,7 @@ folder structure."* Claude reads the report locally on your Mac.
 | `excluded_folders` | Folders inside those to skip | `[]` |
 | `stale_days` | "Not touched recently" threshold | `365` |
 | `hash_duplicates` | Check exact duplicates | `true` |
+| `loose_photos_are_business` | Personal photos live in Apple Photos, so loose image files (not screenshots) count as Memobrick assets | `false` (example config: `true`) |
 | `business_keywords` | Words that mark a file as Memobrick-related | memobrick, mosaic, brick, baseplate, shopify |
 | `state_dir` | Where index + reports live | `~/.file-organizer` |
 
