@@ -194,6 +194,8 @@ class KindsTest(unittest.TestCase):
         self.assertEqual(kind_for("IMG_0001.HEIC"), "image")
         self.assertEqual(kind_for("reel.MOV"), "video")
         self.assertEqual(kind_for("mystery"), "other")
+        self.assertEqual(kind_for("Screenshot 2026-09-01 at 10.07.31 AM.pdf"), "screenshot")
+        self.assertEqual(kind_for("Report.pdf"), "pdf")
         self.assertEqual(kind_for("Screen Shot 2020-01-01 at 9.00.00 AM.png"), "screenshot")
         self.assertEqual(kind_for("Captura de pantalla 2026-01-01.png"), "screenshot")
         self.assertEqual(kind_for("צילום מסך 2026-01-01.png"), "screenshot")

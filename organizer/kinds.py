@@ -45,8 +45,8 @@ _SCREEN_RECORDING_RE = re.compile(
 
 def kind_for(name: str) -> str:
     kind = _EXT_TO_KIND.get(PurePath(name).suffix.lower(), "other")
-    if kind == "image" and _SCREENSHOT_RE.match(name):
-        return "screenshot"
+    if kind in ("image", "pdf") and _SCREENSHOT_RE.match(name):
+        return "screenshot"  # macOS can save screenshots as PDF too
     if kind == "video" and _SCREEN_RECORDING_RE.match(name):
         return "screen_recording"
     return kind
