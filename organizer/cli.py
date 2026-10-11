@@ -9,6 +9,7 @@ reverses it.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -26,7 +27,7 @@ from organizer.plans import (
     parse_skip, render_move_preview, screenshot_move_pairs,
     render_trash_preview, save_plan, write_preview,
 )
-from organizer import moves, trash
+from organizer import moves, schedule, trash, weekly
 from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_plan
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
@@ -138,6 +139,21 @@ def _confirm_backup(ask) -> bool:
     return ask("Is your latest backup from today? Type yes to continue: ").strip().lower() == "yes"
 
 
+def execute_plan(plan: dict, journal: Path, skip=()):
+    """Carry out a reviewed plan. Returns (summary text, counts)."""
+    if plan["action"] == "cleanup":
+        mp, tp = split_plan(plan)
+        mc = moves.apply_moves(mp, journal, skip, say=_say)
+        tc = trash.apply_trash(tp, journal, skip, say=_say)
+        counts = {"skipped": mc["skipped"] + tc["skipped"], "failed": mc["failed"] + tc["failed"]}
+        return f"Kept together: {mc['moved']:,} · moved to Trash: {tc['trashed']:,}", counts
+    if plan["action"] == "trash":
+        counts = trash.apply_trash(plan, journal, skip, say=_say)
+        return f"Moved to Trash: {counts['trashed']:,}", counts
+    counts = moves.apply_moves(plan, journal, skip, say=_say)
+    return f"Moved: {counts['moved']:,}", counts
+
+
 def cmd_apply(args: argparse.Namespace, ask=input) -> int:
     cfg = load_config(args.config)
     plan = load_plan(args.plan)
@@ -178,18 +194,7 @@ def cmd_apply(args: argparse.Namespace, ask=input) -> int:
         return 1
     stamp = time.strftime("%Y-%m-%d_%H%M%S")
     journal = cfg.state_dir / "journal" / f"{Path(args.plan).stem}_{stamp}.jsonl"
-    if plan["action"] == "cleanup":
-        mp, tp = split_plan(plan)
-        mc = moves.apply_moves(mp, journal, skip, say=_say)
-        tc = trash.apply_trash(tp, journal, skip, say=_say)
-        counts = {"skipped": mc["skipped"] + tc["skipped"], "failed": mc["failed"] + tc["failed"]}
-        done = f"Kept together: {mc['moved']:,} · moved to Trash: {tc['trashed']:,}"
-    elif is_trash:
-        counts = trash.apply_trash(plan, journal, skip, say=_say)
-        done = f"Moved to Trash: {counts['trashed']:,}"
-    else:
-        counts = moves.apply_moves(plan, journal, skip, say=_say)
-        done = f"Moved: {counts['moved']:,}"
+    done, counts = execute_plan(plan, journal, skip)
     _say("")
     _say(f"{done} · left alone: {counts['skipped']:,} · failed: {counts['failed']:,}")
     _say("To put everything back:")
@@ -333,6 +338,103 @@ def cmd_cleanup(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_weekly(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    cfg.roots = [r for r in cfg.roots if r.exists()]
+    summary = weekly.run_weekly(cfg, _say, use_vision=not args.no_vision)
+    _say("")
+    if summary["entries"]:
+        for x in summary["entries"]:
+            _say(f"  • {x['title']}: {x['count']:,} ({human(x['size'])})")
+        _say("Nothing was changed. To approve everything:  python3 -m organizer approve")
+    else:
+        _say("Nothing to tidy this week.")
+    _say(f"Weekly report: {summary['report']}")
+    weekly.notify(summary)
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", summary["report"]], check=False)
+    return 0
+
+
+def cmd_approve(args: argparse.Namespace, ask=input) -> int:
+    cfg = load_config(args.config)
+    summary = weekly.load_latest(cfg.state_dir)
+    if not summary:
+        _say("No weekly check yet. Run:  python3 -m organizer weekly --open")
+        return 1
+    pending = [x for x in summary["entries"] if not x.get("approved") and Path(x["plan"]).exists()]
+    if not pending:
+        _say("Everything from the latest weekly check is already done.")
+        return 0
+    plans = [(x, load_plan(x["plan"])) for x in pending]
+    if any(p["action"] in ("trash", "cleanup") for _, p in plans) and not trash.is_macos():
+        _say("Moving to the Trash only works on macOS.")
+        return 2
+    _say("From the weekly check:")
+    for x, _ in plans:
+        _say(f"  • {x['title']}: {x['count']:,} ({human(x['size'])})")
+    if not _confirm_backup(ask):
+        _say("Stopped. Nothing was changed.")
+        return 1
+    _say("macOS may ask to let Terminal control Finder — click OK.")
+    if ask("Type APPROVE to carry out all of the above: ").strip().upper() != "APPROVE":
+        _say("Stopped. Nothing was changed.")
+        return 1
+    failed = 0
+    undo_cmds = []
+    for x, plan in plans:
+        stamp = time.strftime("%Y-%m-%d_%H%M%S")
+        journal = cfg.state_dir / "journal" / f"{Path(x['plan']).stem}_{stamp}.jsonl"
+        _say(f"{x['title']}…")
+        done, counts = execute_plan(plan, journal)
+        _say(f"  {done} · left alone: {counts['skipped']:,} · failed: {counts['failed']:,}")
+        failed += counts["failed"]
+        x["approved"] = True
+        undo_cmds.append(f"python3 -m organizer undo {journal}")
+    weekly.latest_path(cfg.state_dir).write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    _say("")
+    _say("All done. To put any step back:")
+    for u in undo_cmds:
+        _say(f"  {u}")
+    return 0 if not failed else 1
+
+
+def cmd_schedule(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    if args.off:
+        removed = schedule.uninstall(load=sys.platform == "darwin")
+        _say("Weekly check turned off." if removed else "The weekly check wasn't on.")
+        return 0
+    if not args.on:
+        st = schedule.status()
+        if not st:
+            _say("Weekly check is off. Turn it on with:  python3 -m organizer schedule --on")
+        else:
+            s = st["StartCalendarInterval"]
+            day = [d for d, n in schedule.DAYS.items() if n == s["Weekday"]][0]
+            _say(f"Weekly check is on: every {day.title()} at {s['Hour']:02d}:{s['Minute']:02d}.")
+        return 0
+    if sys.platform != "darwin":
+        _say("Scheduling only works on macOS.")
+        return 2
+    day = args.day.lower()
+    if day not in schedule.DAYS:
+        _say(f"Error: unknown day '{args.day}'.")
+        return 2
+    try:
+        hour, minute = (int(x) for x in args.time.split(":"))
+        assert 0 <= hour < 24 and 0 <= minute < 60
+    except (ValueError, AssertionError):
+        _say("Error: use a time like 09:00.")
+        return 2
+    plist = schedule.install(cfg.state_dir, Path.cwd(), args.config.resolve(),
+                             schedule.DAYS[day], hour, minute)
+    _say(f"Weekly check is on: every {day.title()} at {hour:02d}:{minute:02d}.")
+    _say("A Terminal window will open, scan (read-only), and show the weekly report.")
+    _say(f"(Settings file: {plist}. Turn off any time:  python3 -m organizer schedule --off)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -381,6 +483,25 @@ def build_parser() -> argparse.ArgumentParser:
     cl.add_argument("--keep", type=int, default=5, help="newest versions to keep per family")
     cl.add_argument("--open", action="store_true")
     cl.set_defaults(func=cmd_cleanup)
+
+    wk = sub.add_parser("weekly", help="Scan and prepare all previews + weekly report (changes nothing)")
+    wk.add_argument("--config", type=Path, default=Path("config.json"))
+    wk.add_argument("--open", action="store_true")
+    wk.add_argument("--no-vision", action="store_true")
+    wk.set_defaults(func=cmd_weekly)
+
+    apv = sub.add_parser("approve", help="Carry out everything from the latest weekly check")
+    apv.add_argument("--config", type=Path, default=Path("config.json"))
+    apv.set_defaults(func=cmd_approve)
+
+    sch = sub.add_parser("schedule", help="Turn the weekly check on/off")
+    sch.add_argument("--config", type=Path, default=Path("config.json"))
+    g = sch.add_mutually_exclusive_group()
+    g.add_argument("--on", action="store_true")
+    g.add_argument("--off", action="store_true")
+    sch.add_argument("--day", default="monday")
+    sch.add_argument("--time", default="09:00")
+    sch.set_defaults(func=cmd_schedule)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
     ap.add_argument("plan", type=Path)

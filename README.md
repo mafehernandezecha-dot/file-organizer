@@ -112,6 +112,28 @@ Command Line Tools; results are cached. Use `--no-vision` to skip it.
 Top-level folders in Downloads (an unzipped editor build, a photo shoot)
 move as one piece, so nothing inside them is scattered.
 
+## Weekly tidy-up (Review Mode)
+
+```bash
+python3 -m organizer schedule --on            # every Monday 09:00 (--day / --time to change)
+python3 -m organizer schedule                 # is it on?
+python3 -m organizer schedule --off           # turn it off
+python3 -m organizer weekly --open            # run the check now
+python3 -m organizer approve                  # carry out everything it prepared
+```
+
+The weekly check scans (read-only), prepares every preview (duplicates,
+installers/archives, screenshots, shipping labels, Memobrick files), writes
+one weekly report, and shows a notification. **It never changes files by
+itself.** `approve` carries out all prepared plans after one Time Machine
+check and typing `APPROVE`, and prints an undo command per step. To approve
+just one, use the `apply` command on its preview (with `--skip` if needed).
+
+The schedule is a per-user LaunchAgent
+(`~/Library/LaunchAgents/com.memobrick.file-organizer.weekly.plist`) that
+opens `~/.file-organizer/weekly.command` in Terminal, so it uses the folder
+access Terminal already has: no Full Disk Access, no hidden background process.
+
 ## Installers & archives (keeping the newest theme versions)
 
 ```bash
