@@ -11,12 +11,13 @@ import sqlite3
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from organizer.analysis import human
 from organizer.classify import HIGH, Decision, classify_file, classify_folder, peek_text
 from organizer.config import Config
 from organizer.moves import unique_destinations
+from organizer.vision import decide_from_vision, is_generic
 from organizer.report import CSS, date, short
 
 PEEK_EXTS = {".pdf", ".docx", ".xlsx", ".pptx", ".csv", ".tsv", ".txt", ".md", ".rtf"}
@@ -35,9 +36,24 @@ def _units(rows: List[sqlite3.Row], root: str):
     return files, folders
 
 
+def image_candidates(conn: sqlite3.Connection, scan_id: int, cfg: Config) -> List[sqlite3.Row]:
+    """Top-level images in the intake folders that are worth looking inside."""
+    out = []
+    for intake in cfg.intake_folders:
+        root = str(intake)
+        for r in conn.execute(
+                """SELECT * FROM files WHERE scan_id=? AND root=? AND kind='image'
+                   AND item_type='file' AND sensitive=0 AND dataless=0""", (scan_id, root)):
+            if os.path.dirname(r["path"]) == root:
+                out.append(r)
+    return out
+
+
 def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
-                    scan_finished: float) -> Dict:
+                    scan_finished: float, vision: Optional[Dict[str, Dict]] = None) -> Dict:
     business_root = cfg.business_root
+    vision = vision or {}
+    seen_types: Counter = Counter()
     moves: List[Tuple[Dict, str]] = []
     review: List[Dict] = []
     for intake in cfg.intake_folders:
@@ -67,6 +83,13 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
                     text = peek_text(r["path"], r["ext"], r["size"])
                 d = classify_file(r, text, cfg.loose_photos_are_business)
                 unit = "file"
+                v = vision.get(r["path"])
+                may_rescue = cfg.loose_photos_are_business or r["business"]
+                if v and is_generic(d.dest) and (d.dest or may_rescue):
+                    vd = decide_from_vision(v)
+                    if vd is not None:
+                        d = vd
+                        seen_types[vd.dest.split("/")[-1] if vd.dest else "Needs a look"] += 1
             _place(d, {**base, "unit": unit}, business_root, moves, review)
 
         for name, children in folders.items():
@@ -100,6 +123,8 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
         "scan_finished_at": scan_finished,
         "items": items,
         "review": review,
+        "images_analyzed": len(vision),
+        "image_types": dict(seen_types),
     }
 
 
@@ -168,7 +193,13 @@ def render_sort_preview(plan: Dict, plan_path: Path) -> str:
         f"<div class=tile><b>{len(medium):,}</b><span>marked “Check”</span></div>"
         f"<div class=tile><b>{len(review):,}</b><span>need your decision (staying put)</span></div>"
         "</div>"
-        "<h2>Where things go</h2>"
+        + (("<h2>What the pictures show</h2><p class=note>Apple's on-device image "
+             f"recognition looked inside {plan.get('images_analyzed', 0):,} image(s). "
+             "Faces are counted, never identified.</p><ul class=obs>"
+             + "".join(f"<li>{n:,} · {e(t)}</li>" for t, n in
+                       sorted(plan.get("image_types", {}).items(), key=lambda kv: -kv[1]))
+             + "</ul>") if plan.get("images_analyzed") else "")
+        + "<h2>Where things go</h2>"
         + table(["Folder", "Items", "Size"], summary)
         + "<h2>How to review</h2><ul class=obs>"
         "<li><b>High</b> = a clear clue (name, ID, or contents). <b>Check</b> = a reasonable "

@@ -100,6 +100,15 @@ only the folders that are needed. Each item gets a reason and a confidence:
 - **Need your decision**: anything unclear, private-looking, installers,
   archives, and unknown software folders stay where they are.
 
+**Looking inside pictures.** On a Mac, `sort` also uses Apple's on-device
+Vision framework (no installs, nothing uploaded) to see what each loose image
+shows: the Memobrick name or a transparent few-color graphic → Logos &
+Graphics; promotional text → Ad Creatives; a small brick-color palette →
+Mosaic Designs; lots of text → Graphics & Flyers; toys/bricks/frames →
+Product Photos; faces → Photos with People (faces are counted, never
+identified). Clear name rules still win. The helper is compiled once with the
+Command Line Tools; results are cached. Use `--no-vision` to skip it.
+
 Top-level folders in Downloads (an unzipped editor build, a photo shoot)
 move as one piece, so nothing inside them is scattered.
 

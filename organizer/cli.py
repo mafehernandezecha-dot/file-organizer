@@ -27,7 +27,8 @@ from organizer.plans import (
     render_trash_preview, save_plan, write_preview,
 )
 from organizer import moves, trash
-from organizer.sorting import build_sort_plan, render_sort_preview
+from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
+from organizer import vision as vision_mod
 from organizer.report import short, write_reports
 from organizer.scanner import scan
 
@@ -236,7 +237,12 @@ def cmd_sort(args: argparse.Namespace) -> int:
         _say("None of the intake folders (Downloads, Desktop) are in approved_folders.")
         return 1
     _say("Reading names and document text (on this Mac only)…")
-    plan = build_sort_plan(conn, scan_id, cfg, scan_row["finished_at"])
+    looks = {}
+    if not args.no_vision:
+        tool = vision_mod.ensure_tool(cfg.state_dir, _say)
+        if tool:
+            looks = vision_mod.analyze_images(conn, tool, image_candidates(conn, scan_id, cfg), _say)
+    plan = build_sort_plan(conn, scan_id, cfg, scan_row["finished_at"], looks)
     plan_path = save_plan(plan, cfg.state_dir / "plans", "sort-memobrick")
     preview = write_preview(render_sort_preview(plan, plan_path), cfg.reports_dir, plan_path)
     n_items = len(plan["items"])
@@ -287,6 +293,8 @@ def build_parser() -> argparse.ArgumentParser:
     so = sub.add_parser("sort", help="Preview filing Memobrick items from Downloads/Desktop")
     so.add_argument("--config", type=Path, default=Path("config.json"))
     so.add_argument("--open", action="store_true")
+    so.add_argument("--no-vision", action="store_true",
+                    help="don't look inside images (sort by names only)")
     so.set_defaults(func=cmd_sort)
 
     ap = sub.add_parser("apply", help="Carry out a reviewed plan")
