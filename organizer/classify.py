@@ -30,6 +30,7 @@ H = "H Operations"
 I = "I Finance & Legal"
 
 HIGH, MEDIUM = 0.85, 0.6
+VIDEOS = f"{F}/Videos"  # every Memobrick video lives here, never mixed with images
 PEEK_CHARS = 20000
 PEEK_MAX_BYTES = 25 * 1024 * 1024
 
@@ -221,11 +222,18 @@ def classify_file(row, text: str, loose_photos_are_business: bool) -> Decision:
         return Decision(f"{F}/Photos/{_year(row['mtime'])}", 0.65,
                         "loose photo (personal photos live in Apple Photos)")
     if kind == "video" and row["business"]:
-        return Decision(f"{F}/Videos/{_year(row['mtime'])}", 0.65, "video with Memobrick in its path")
+        return Decision(VIDEOS, 0.65, "video with Memobrick in its path")
 
     if row["business"]:
         return REVIEW("mentions Memobrick, but what kind of file it is isn't clear")
     return REVIEW("doesn't look like a Memobrick file")
+
+
+def videos_together(d: Decision, kind: str) -> Decision:
+    """A Memobrick video always goes to the one Videos folder (code builds aside)."""
+    if kind == "video" and d.dest and not d.dest.startswith(("@", C)) and d.dest != VIDEOS:
+        return Decision(VIDEOS, d.confidence, f"{d.reason} · video")
+    return d
 
 
 def classify_folder(name: str, child_kinds: Counter, is_project: bool, business: bool,
@@ -248,6 +256,9 @@ def classify_folder(name: str, child_kinds: Counter, is_project: bool, business:
         return Decision(f"{A}/Logos & Graphics", 0.8, "logo/brand folder")
     if _has(n, "ads?", "campaign", "creatives?", "promo"):
         return Decision(f"{F}/Ad Creatives", 0.8, "ad creatives folder")
+    videos = child_kinds.get("video", 0)
+    if media / total >= 0.8 and videos > total / 2 and business:
+        return Decision(VIDEOS, 0.65, f"folder of videos ({videos} of {total} files)")
     if media / total >= 0.8 and (business or loose_photos_are_business):
         return Decision(f"{F}/Photos/{_year(mtime)}", 0.65,
                         f"folder of photos/videos ({media} of {total} files)")

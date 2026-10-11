@@ -32,18 +32,20 @@ from organizer.plans import (
 from organizer.report import CSS, short, write_reports
 from organizer.scanner import scan
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
+from organizer.videos import build_videos_plan
 
 Say = Callable[[str], None]
 
 # Order matters when approving: trash duplicates and old archives first, then
 # gather screenshots, trash labels, and finally file Memobrick items.
-STEPS = ["duplicates", "cleanup", "screenshots", "labels", "sort"]
+STEPS = ["duplicates", "cleanup", "screenshots", "labels", "sort", "videos"]
 TITLES = {
     "duplicates": "Extra copies of duplicates → Trash",
     "cleanup": "Installers & old archives → Trash (newest 5 theme/editor versions kept)",
     "screenshots": "New screenshots & recordings → Pictures/Screenshots",
     "labels": "Shipping labels → Trash",
-    "sort": "Memobrick files → Documents/01 MEMOBRICK BUSINESS",
+    "sort": "Files → 01 MEMOBRICK BUSINESS / 02 PERSONAL DOCUMENTS / 05 INTAKE",
+    "videos": "Memobrick videos → F Creative Assets/Videos",
 }
 
 
@@ -93,6 +95,9 @@ def run_weekly(cfg: Config, say: Say, use_vision: bool = True) -> Dict:
         if tool:
             looks = vision_mod.analyze_images(conn, tool, image_candidates(conn, scan_id, cfg), say)
     add("sort", build_sort_plan(conn, scan_id, cfg, finished, looks), render_sort_preview)
+    if cfg.business_root.is_dir():
+        add("videos", build_videos_plan(cfg),
+            lambda p, path: render_move_preview(p, path, "Memobrick videos"))
 
     summary = {"created_at": time.time(), "scan_finished_at": finished,
                "audit_report": str(audit_html), "entries": entries}

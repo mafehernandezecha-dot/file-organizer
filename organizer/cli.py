@@ -31,6 +31,7 @@ from organizer import moves, schedule, tags, trash, weekly
 from organizer.cleanup import build_cleanup_plan, render_cleanup_preview, split_plan
 from organizer.dupes import build_duplicates_plan, render_duplicates_preview
 from organizer.sorting import build_sort_plan, image_candidates, render_sort_preview
+from organizer.videos import build_videos_plan
 from organizer import vision as vision_mod
 from organizer.report import short, write_reports
 from organizer.scanner import scan
@@ -499,6 +500,26 @@ def cmd_tag(args: argparse.Namespace, ask=input) -> int:
     return 0 if not counts["failed"] else 1
 
 
+def cmd_videos(args: argparse.Namespace) -> int:
+    cfg = load_config(args.config)
+    plan = build_videos_plan(cfg)
+    if not plan["items"]:
+        _say(f"All Memobrick videos are already in {short(plan['dest_root'])}.")
+        return 0
+    plan_path = save_plan(plan, cfg.state_dir / "plans", "move-videos")
+    preview = write_preview(render_move_preview(plan, plan_path, "Memobrick videos"),
+                            cfg.reports_dir, plan_path)
+    _say(f"Found {len(plan['items']):,} video(s), {human(sum(i['size'] for i in plan['items']))}, "
+         f"to gather into {short(plan['dest_root'])}.")
+    _say("Nothing has been moved. Review the preview:")
+    _say(f"  {preview}")
+    _say("When it looks right, approve with:")
+    _say(f"  python3 -m organizer apply {plan_path}")
+    if args.open and sys.platform == "darwin":
+        subprocess.run(["open", str(preview)], check=False)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="organizer", description="Smart File Organization Agent")
     p.add_argument("--version", action="version", version=__version__)
@@ -566,6 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
     sch.add_argument("--day", default="monday")
     sch.add_argument("--time", default="09:00")
     sch.set_defaults(func=cmd_schedule)
+
+    vd = sub.add_parser("videos", help="Preview gathering all Memobrick videos into one folder")
+    vd.add_argument("--config", type=Path, default=Path("config.json"))
+    vd.add_argument("--open", action="store_true")
+    vd.set_defaults(func=cmd_videos)
 
     tg = sub.add_parser("tag", help="Add a Finder tag (default Red) to every Memobrick image")
     tg.add_argument("--config", type=Path, default=Path("config.json"))

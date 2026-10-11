@@ -80,6 +80,21 @@ Memobrick business and personal files.
 
 5. **Re-open the last report** any time: `python3 -m organizer report --open`
 
+## All Memobrick videos in one folder
+
+Every Memobrick video goes to `01 MEMOBRICK BUSINESS/F Creative Assets/Videos`
+— never mixed with images in Ad Creatives or Social Media. `sort` does this
+for new files; for videos filed earlier:
+
+```bash
+python3 -m organizer videos --open     # preview gathering them (incl. old Videos/<year> folders)
+python3 -m organizer apply ~/.file-organizer/plans/move-videos_….json      # type MOVE
+```
+
+Subfolders you create inside Videos are left as they are; videos inside code
+folders stay put; non-Memobrick videos go to `05 INTAKE/Videos`. The weekly
+check includes this step too.
+
 ## Red tag on Memobrick images
 
 ```bash

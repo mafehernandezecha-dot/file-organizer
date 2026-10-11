@@ -14,7 +14,9 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from organizer.analysis import human
-from organizer.classify import HIGH, Decision, classify_file, classify_folder, peek_text
+from organizer.classify import (
+    HIGH, Decision, classify_file, classify_folder, peek_text, videos_together,
+)
 from organizer.config import Config
 from organizer.moves import unique_destinations
 from organizer.personal import INTAKE, PERSONAL, classify_personal, intake_file, intake_folder
@@ -115,6 +117,7 @@ def build_sort_plan(conn: sqlite3.Connection, scan_id: int, cfg: Config,
                         d = vd if vd.dest else Decision(f"{INTAKE}Photos of Documents", 0.6, vd.reason)
             if not d.dest:
                 d = intake_file(r, business_hint=bool(r["business"]))
+            d = videos_together(d, r["kind"])
             _place(d, {**base, "unit": "file"}, cfg, moves, review)
 
         for name, children in folders.items():
