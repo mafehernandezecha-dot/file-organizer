@@ -52,6 +52,9 @@ class ClassifyTest(unittest.TestCase):
             "Memobrick_Logo_white.png": "A Brand & Identity/Logos & Graphics",
             "Montserrat-Bold.ttf": "A Brand & Identity/Fonts",
             "Invoice-0042.pdf": "I Finance & Legal/Invoices & Receipts",
+            "Memobrick trademark registration.pdf": "I Finance & Legal/Intellectual Property",
+            "USPTO filing receipt.pdf": "I Finance & Legal/Intellectual Property",
+            "Supplier agreement.pdf": "H Operations/Suppliers & Purchasing",
             "packing slip 21074.pdf": "H Operations/Shipping",
             "Inventory October.xlsx": "H Operations/Inventory",
             "Alibaba quote baseplates.pdf": "H Operations/Suppliers & Purchasing",
@@ -231,6 +234,8 @@ class PersonalAndIntakeTest(unittest.TestCase):
             "Car insurance policy.pdf": "Insurance",
             "Warranty TV.pdf": "Receipts & Warranties",
             "Resume 2026.docx": "Personal Projects",
+            "DJ Shia Music - Wedding Contract - 50621 copy.pdf": "Family Documents",
+            "Payment Terms & Agreement - TGL (done).pdf": "Contracts & Agreements",
             "passport.jpg": "Identification & Official Documents",
         }
         for name, want in cases.items():
@@ -265,3 +270,12 @@ class PersonalAndIntakeTest(unittest.TestCase):
                 "mystery.bin": "05 INTAKE/Needs Manual Review/mystery.bin",
                 "Bank statement Sept.pdf": "02 PERSONAL DOCUMENTS/Banking & Finances/Bank statement Sept.pdf",
             })
+
+
+class ContractRuleTest(unittest.TestCase):
+    def test_contracts_need_a_memobrick_clue(self):
+        self.assertEqual(classify_file(row("Wedding Contract.pdf"), "", True).dest, "")
+        self.assertEqual(classify_file(row("Distribution agreement.pdf", business=1), "", True).dest,
+                         "I Finance & Legal/Contracts & Legal")
+        self.assertEqual(classify_file(row("agreement.pdf"), "memobrick llc and the vendor", True).dest,
+                         "I Finance & Legal/Contracts & Legal")

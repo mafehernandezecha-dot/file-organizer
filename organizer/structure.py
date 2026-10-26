@@ -46,7 +46,8 @@ BUSINESS: Dict[str, List[str]] = {
     "J Archive": ["Previous Campaigns", "Retired Designs", "Old Product Versions",
                   "Historical Reports", "Completed Projects"],
 }
-PERSONAL = [ID, IMM, TRAVEL, FAMILY, HOME, INS, BANK, EDU, MED, RCPT, PROJ, "Archive"]
+PERSONAL = [ID, IMM, TRAVEL, FAMILY, HOME, INS, BANK, EDU, MED, RCPT, "Contracts & Agreements",
+            PROJ, "Archive"]
 INTAKE = ["Documents to Review", "Photos", "Videos", "Audio", "Compressed Files", "Installers",
           "Memobrick to Sort", "Folders to Review", "Needs Manual Review"]
 

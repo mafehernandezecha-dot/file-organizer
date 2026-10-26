@@ -178,9 +178,15 @@ def classify_file(row, text: str, loose_photos_are_business: bool) -> Decision:
     if w := _has(n, r"brand[\s_\-]*(guide|guidelines|book|kit)", r"style[\s_\-]*guide"):
         return Decision(f"{A}/Brand Guidelines", 0.9, "brand guidelines")
 
+    if w := _has(n, "trademarks?", r"marca[\s_\-]*registrada", "uspto", "patent", "copyright",
+                 r"intellectual[\s_\-]*property"):
+        return Decision(f"{I}/Intellectual Property", 0.85, f"'{w}' in the name")
     if w := _has(n, "invoice", "invoices", "factura", "receipt", "recibo", "bill"):
         return Decision(f"{I}/Invoices & Receipts", 0.85, f"'{w}' in the name")
-    if w := _has(n, "contract", "agreement", "nda", "contrato", "trademark", "license"):
+    # Contracts only count as business when something ties them to Memobrick;
+    # otherwise they're personal (e.g. a wedding DJ contract) and checked later.
+    memobrick_clue = row["business"] or "memobrick" in text
+    if memobrick_clue and (w := _has(n, "contract", "agreement", "nda", "contrato", "license")):
         return Decision(f"{I}/Contracts & Legal", 0.8, f"'{w}' in the name")
 
     if w := _has(n, r"packing[\s_\-]*slip", "tracking", r"shipping", "usps", "fedex", "dhl"):
